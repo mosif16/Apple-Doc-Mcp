@@ -1,0 +1,25 @@
+# Build artifacts
+target/
+.cargo/
+
+# Tooling caches
+.fastembed_cache
+.mcp-index.sqlite
+.ann
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+docs

@@ -1,0 +1,41 @@
+[workspace]
+members = [
+	"apps/cli",
+	"crates/apple-docs-client",
+	"crates/apple-docs-core",
+	"crates/apple-docs-mcp"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.76"
+license = "MIT"
+authors = ["Mohammed Sayf <recordandlearn@example.com>"]
+
+[workspace.dependencies]
+anyhow = "1.0"
+config = "0.14"
+dashmap = "5.5"
+directories = "5.0"
+insta = {version = "1.39", features = ["yaml"]}
+reqwest = {version = "0.12", default-features = false, features = ["json", "gzip", "brotli", "rustls-tls"]}
+serde = {version = "1.0", features = ["derive"]}
+serde_json = "1.0"
+thiserror = "1.0"
+time = {version = "0.3", features = ["macros", "serde-human-readable"]}
+tokio = {version = "1.40", features = ["macros", "rt-multi-thread", "fs", "io-util", "io-std"]}
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-subscriber = {version = "0.3", features = ["fmt", "env-filter"]}
+tempfile = "3.10"
+regex = "1.11"
+futures = "0.3"
+
+[workspace.lints.clippy]
+pedantic = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+
+[workspace.metadata]
+app_docs_cache_dir_env = "APPLEDOC_CACHE_DIR"

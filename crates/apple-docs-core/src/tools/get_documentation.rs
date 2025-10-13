@@ -1,0 +1,580 @@
+use std::{collections::HashSet, sync::Arc};
+
+use anyhow::{anyhow, Context, Result};
+use apple_docs_client::types::{
+    extract_text, format_platforms, PlatformInfo, ReferenceData, SymbolData, TopicData,
+    TopicSection,
+};
+use serde::Deserialize;
+use serde_json::Value;
+
+use crate::{
+    markdown,
+    state::{AppContext, ToolDefinition, ToolHandler, ToolResponse},
+    tools::{parse_args, text_response, wrap_handler},
+};
+
+#[derive(Debug, Deserialize)]
+struct Args {
+    path: String,
+}
+
+pub fn definition() -> (ToolDefinition, ToolHandler) {
+    (
+        ToolDefinition {
+            name: "get_documentation".to_string(),
+            description: "Get detailed documentation for symbols within the selected technology"
+                .to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                    "path": {"type": "string", "description": "Symbol path or relative name"}
+                }
+            }),
+        },
+        wrap_handler(|context, value| async move {
+            let args: Args = parse_args(value)?;
+            handle(context, args).await
+        }),
+    )
+}
+
+async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+    let active = context
+        .state
+        .active_technology
+        .read()
+        .await
+        .clone()
+        .context("No technology selected. Use `choose_technology` first.")?;
+
+    let identifier = active
+        .identifier
+        .split('/')
+        .last()
+        .context("Invalid technology identifier")?;
+
+    let normalized = normalize_path(&args.path, identifier);
+    let fallback = fallback_path(&args.path);
+    let paths = if normalized == fallback {
+        vec![normalized.clone()]
+    } else {
+        vec![normalized.clone(), fallback.clone()]
+    };
+    let mut last_error = None;
+
+    for path in paths {
+        match context.client.load_document(&path).await {
+            Ok(value) => {
+                if let Ok(symbol) = serde_json::from_value::<SymbolData>(value.clone()) {
+                    *context.state.last_symbol.write().await = Some(symbol.clone());
+                    let lines = build_response(&active.title, &symbol);
+                    return Ok(text_response(lines));
+                }
+
+                match serde_json::from_value::<TopicData>(value) {
+                    Ok(topic) => {
+                        let lines = build_topic_response(&active.title, &path, &topic);
+                        return Ok(text_response(lines));
+                    }
+                    Err(error) => {
+                        last_error = Some(anyhow!(
+                            "Unsupported documentation format at {}: {}",
+                            path,
+                            error
+                        ));
+                    }
+                }
+            }
+            Err(error) => {
+                last_error = Some(error);
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        anyhow!(
+            "Failed to load documentation for {} (and fallback {}).",
+            normalized,
+            fallback
+        )
+    }))
+}
+
+fn normalize_path(path: &str, identifier: &str) -> String {
+    let trimmed = path.trim();
+    let without_doc = trimmed
+        .strip_prefix("doc://com.apple.SwiftUI/")
+        .or_else(|| trimmed.strip_prefix("doc://com.apple.documentation/"))
+        .unwrap_or(trimmed);
+    let without_prefix = without_doc.trim_start_matches('/');
+
+    if without_prefix.starts_with("documentation/") {
+        without_prefix.to_string()
+    } else {
+        format!("documentation/{}/{}", identifier, without_prefix)
+    }
+}
+
+fn fallback_path(path: &str) -> String {
+    let trimmed = path
+        .trim()
+        .strip_prefix("doc://com.apple.SwiftUI/")
+        .or_else(|| path.trim().strip_prefix("doc://com.apple.documentation/"))
+        .unwrap_or(path.trim())
+        .trim_start_matches('/');
+    if trimmed.starts_with("documentation/") {
+        trimmed.to_string()
+    } else {
+        format!("documentation/{}", trimmed)
+    }
+}
+
+fn build_topic_response(technology_title: &str, path: &str, topic: &TopicData) -> Vec<String> {
+    let title = topic
+        .metadata
+        .title
+        .clone()
+        .unwrap_or_else(|| "Topic".to_string());
+    let description = extract_text(&topic.r#abstract);
+    let summary = build_topic_summary(topic, &description);
+
+    let mut lines = vec![
+        markdown::header(1, &title),
+        String::new(),
+        markdown::bold("Technology", technology_title),
+        markdown::bold("Path", path),
+    ];
+
+    if !summary.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Quick Summary"));
+        lines.extend(summary);
+    }
+
+    lines.push(String::new());
+    lines.push(markdown::header(2, "Overview"));
+    if description.trim().is_empty() {
+        lines.push("No overview available.".to_string());
+    } else {
+        lines.push(description);
+    }
+
+    if !topic.topic_sections.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Topics"));
+        for section in &topic.topic_sections {
+            lines.push(format!("### {}", section.title));
+            for identifier in &section.identifiers {
+                if let Some(reference) = topic.references.get(identifier) {
+                    let title = reference
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| identifier.to_string());
+                    let desc = reference
+                        .r#abstract
+                        .as_ref()
+                        .map(|segments| extract_text(segments))
+                        .unwrap_or_default();
+                    let trimmed = trim_with_ellipsis(&desc, 100);
+                    lines.push(format!("• **{}** - {}", title, trimmed));
+                }
+            }
+            lines.push(String::new());
+        }
+    }
+
+    lines
+}
+
+fn build_response(technology_title: &str, symbol: &SymbolData) -> Vec<String> {
+    let title = symbol
+        .metadata
+        .title
+        .clone()
+        .unwrap_or_else(|| "Symbol".to_string());
+    let kind = symbol
+        .metadata
+        .symbol_kind
+        .clone()
+        .unwrap_or_else(|| "Unknown".to_string());
+    let platforms = format_platforms(symbol.metadata.platforms.as_slice());
+    let description = extract_text(&symbol.r#abstract);
+    let summary = build_symbol_summary(symbol, &kind, &platforms, &description);
+
+    let mut lines = vec![
+        markdown::header(1, &title),
+        String::new(),
+        markdown::bold("Technology", technology_title),
+        markdown::bold("Type", &kind),
+        markdown::bold("Platforms", &platforms),
+    ];
+
+    if !summary.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Quick Summary"));
+        lines.extend(summary);
+    }
+
+    lines.push(String::new());
+    lines.push(markdown::header(2, "Overview"));
+    if description.trim().is_empty() {
+        lines.push("No overview available.".to_string());
+    } else {
+        lines.push(description);
+    }
+
+    if !symbol.topic_sections.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "API Reference"));
+        for section in &symbol.topic_sections {
+            lines.push(format!("### {}", section.title));
+            for identifier in section.identifiers.iter().take(5) {
+                if let Some(reference) = symbol.references.get(identifier) {
+                    let desc = reference
+                        .r#abstract
+                        .as_ref()
+                        .map(|segments| extract_text(segments))
+                        .unwrap_or_default();
+                    let trimmed = trim_with_ellipsis(&desc, 100);
+                    let title = reference
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| "Symbol".to_string());
+                    lines.push(format!("• **{}** - {}", title, trimmed));
+                }
+            }
+            if section.identifiers.len() > 5 {
+                lines.push(format!(
+                    "*... and {} more items*",
+                    section.identifiers.len() - 5
+                ));
+            }
+            lines.push(String::new());
+        }
+    }
+
+    lines
+}
+
+fn trim_with_ellipsis(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        text.to_string()
+    } else {
+        format!("{}...", &text[..max])
+    }
+}
+
+fn build_symbol_summary(
+    symbol: &SymbolData,
+    kind: &str,
+    platforms: &str,
+    overview: &str,
+) -> Vec<String> {
+    let mut summary = Vec::new();
+
+    if !kind.is_empty() {
+        summary.push(format!("• Kind: {kind}"));
+    }
+
+    if let Some(availability) = summarize_availability(symbol.metadata.platforms.as_slice()) {
+        summary.push(format!("• Introduced: {availability}"));
+    } else if !platforms.is_empty() {
+        summary.push(format!("• Platforms: {platforms}"));
+    }
+
+    let brief = overview.trim();
+    if !brief.is_empty() {
+        summary.push(format!("• Summary: {}", trim_with_ellipsis(brief, 140)));
+    }
+
+    if let Some(highlights) = summarize_sections(&symbol.topic_sections) {
+        summary.push(format!("• Sections to explore: {highlights}"));
+    }
+
+    if let Some(samples) = summarize_sample_code(&symbol.topic_sections, &symbol.references) {
+        summary.push(format!("• Sample code: {samples}"));
+    } else if has_code_examples(&symbol.primary_content_sections) {
+        summary.push("• Sample code: Inline examples available in documentation.".to_string());
+    }
+
+    summary
+}
+
+fn build_topic_summary(topic: &TopicData, overview: &str) -> Vec<String> {
+    let mut summary = Vec::new();
+
+    let brief = overview.trim();
+    if !brief.is_empty() {
+        summary.push(format!("• Summary: {}", trim_with_ellipsis(brief, 140)));
+    }
+
+    if let Some(highlights) = summarize_sections(&topic.topic_sections) {
+        summary.push(format!("• Sections to explore: {highlights}"));
+    }
+
+    if let Some(samples) = summarize_sample_code(&topic.topic_sections, &topic.references) {
+        summary.push(format!("• Sample code: {samples}"));
+    }
+
+    summary
+}
+
+fn summarize_availability(platforms: &[PlatformInfo]) -> Option<String> {
+    let mut availability = Vec::new();
+
+    for platform in platforms {
+        if let Some(version) = &platform.introduced_at {
+            let mut entry = format!("{} {}", platform.name, version);
+            if platform.beta {
+                entry.push_str(" (Beta)");
+            }
+            availability.push(entry);
+        }
+    }
+
+    if availability.is_empty() {
+        None
+    } else {
+        Some(availability.join(" · "))
+    }
+}
+
+fn summarize_sections(sections: &[TopicSection]) -> Option<String> {
+    let highlights: Vec<String> = sections
+        .iter()
+        .filter_map(|section| {
+            let title = section.title.trim();
+            if title.is_empty() {
+                None
+            } else {
+                Some(title.to_string())
+            }
+        })
+        .take(3)
+        .collect();
+
+    if highlights.is_empty() {
+        None
+    } else {
+        Some(highlights.join(" · "))
+    }
+}
+
+fn summarize_sample_code(
+    sections: &[TopicSection],
+    references: &std::collections::HashMap<String, ReferenceData>,
+) -> Option<String> {
+    let mut titles = Vec::new();
+    let mut seen = HashSet::new();
+
+    for section in sections {
+        let title = section.title.to_lowercase();
+        let is_sample_section = title.contains("sample") || title.contains("tutorial");
+
+        for identifier in &section.identifiers {
+            if let Some(reference) = references.get(identifier) {
+                let matches_kind = reference
+                    .kind
+                    .as_deref()
+                    .map(|kind| kind.eq_ignore_ascii_case("samplecode"))
+                    .unwrap_or(false);
+                if is_sample_section || matches_kind {
+                    if let Some(name) = reference.title.clone() {
+                        if seen.insert(name.clone()) {
+                            titles.push(name);
+                        }
+                    }
+                }
+            }
+        }
+
+        if titles.len() >= 3 {
+            break;
+        }
+    }
+
+    if titles.is_empty() {
+        None
+    } else {
+        Some(titles.join(" · "))
+    }
+}
+
+fn has_code_examples(sections: &[Value]) -> bool {
+    sections.iter().any(contains_code_listing)
+}
+
+fn contains_code_listing(value: &Value) -> bool {
+    match value {
+        Value::Object(map) => {
+            if let Some(kind) = map.get("type").and_then(Value::as_str) {
+                if kind.eq_ignore_ascii_case("codelisting") {
+                    return true;
+                }
+            }
+            if let Some(kind) = map.get("kind").and_then(Value::as_str) {
+                if kind.eq_ignore_ascii_case("codelisting") {
+                    return true;
+                }
+            }
+            map.values().any(contains_code_listing)
+        }
+        Value::Array(items) => items.iter().any(contains_code_listing),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use apple_docs_client::types::{
+        PlatformInfo, ReferenceData, RichText, SymbolData, SymbolMetadata, TopicData,
+        TopicMetadata, TopicSection,
+    };
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    fn sample_symbol() -> SymbolData {
+        let mut references = HashMap::new();
+        references.insert(
+            "sample-1".to_string(),
+            ReferenceData {
+                title: Some("Animating a View".to_string()),
+                kind: Some("sampleCode".to_string()),
+                r#abstract: None,
+                platforms: None,
+                url: None,
+            },
+        );
+
+        SymbolData {
+            r#abstract: vec![RichText {
+                text: Some("Displays styled text content.".to_string()),
+                kind: "text".to_string(),
+            }],
+            metadata: SymbolMetadata {
+                platforms: vec![
+                    PlatformInfo {
+                        name: "iOS".to_string(),
+                        introduced_at: Some("15.0".to_string()),
+                        beta: false,
+                    },
+                    PlatformInfo {
+                        name: "macOS".to_string(),
+                        introduced_at: None,
+                        beta: false,
+                    },
+                ],
+                symbol_kind: Some("Struct".to_string()),
+                title: Some("StyledText".to_string()),
+            },
+            primary_content_sections: Vec::new(),
+            references,
+            topic_sections: vec![
+                TopicSection {
+                    anchor: None,
+                    identifiers: vec!["sample-1".to_string()],
+                    title: "Sample Code".to_string(),
+                },
+                TopicSection {
+                    anchor: None,
+                    identifiers: Vec::new(),
+                    title: "Configure Appearance".to_string(),
+                },
+            ],
+        }
+    }
+
+    fn symbol_with_inline_examples() -> SymbolData {
+        let mut symbol = sample_symbol();
+        symbol.references.clear();
+        symbol.topic_sections.clear();
+        symbol.primary_content_sections = vec![json!({
+            "kind": "content",
+            "content": [
+                { "type": "codeListing", "syntax": "swift", "code": ["Text(\"Hello World\")"] }
+            ]
+        })];
+        symbol
+    }
+
+    fn sample_topic() -> TopicData {
+        let mut references = HashMap::new();
+        references.insert(
+            "tutorial-1".to_string(),
+            ReferenceData {
+                title: Some("Create a Custom View".to_string()),
+                kind: Some("tutorial".to_string()),
+                r#abstract: None,
+                platforms: None,
+                url: None,
+            },
+        );
+
+        TopicData {
+            r#abstract: vec![RichText {
+                text: Some("Learn how to compose complex SwiftUI views.".to_string()),
+                kind: "text".to_string(),
+            }],
+            topic_sections: vec![
+                TopicSection {
+                    anchor: None,
+                    identifiers: vec!["tutorial-1".to_string()],
+                    title: "Tutorials".to_string(),
+                },
+                TopicSection {
+                    anchor: None,
+                    identifiers: Vec::new(),
+                    title: "Best Practices".to_string(),
+                },
+            ],
+            references,
+            metadata: TopicMetadata {
+                title: Some("Building Views".to_string()),
+            },
+        }
+    }
+
+    #[test]
+    fn symbol_summary_highlights_availability_and_samples() {
+        let symbol = sample_symbol();
+        let summary = build_symbol_summary(
+            &symbol,
+            "Struct",
+            "iOS 15.0, macOS",
+            "Displays styled text content.",
+        );
+
+        assert!(summary
+            .iter()
+            .any(|line| line.contains("Introduced: iOS 15.0")));
+        assert!(summary
+            .iter()
+            .any(|line| line.contains("Sections to explore")));
+        assert!(summary.iter().any(|line| line.contains("Sample code")));
+    }
+
+    #[test]
+    fn topic_summary_includes_sections() {
+        let topic = sample_topic();
+        let summary = build_topic_summary(&topic, "Learn how to compose complex SwiftUI views.");
+
+        assert!(summary.iter().any(|line| line.contains("Summary:")));
+        assert!(summary
+            .iter()
+            .any(|line| line.contains("Sections to explore")));
+        assert!(summary.iter().any(|line| line.contains("Sample code")));
+    }
+
+    #[test]
+    fn symbol_summary_mentions_inline_examples_when_no_sample_refs() {
+        let symbol = symbol_with_inline_examples();
+        let summary = build_symbol_summary(&symbol, "Struct", "iOS 15.0", "Displays styled text.");
+
+        assert!(summary
+            .iter()
+            .any(|line| line.contains("Inline examples available")));
+    }
+}

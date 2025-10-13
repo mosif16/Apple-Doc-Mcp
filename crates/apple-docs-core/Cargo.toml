@@ -1,0 +1,20 @@
+[package]
+name = "apple-docs-core"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+apple-docs-client = {path = "../apple-docs-client"}
+anyhow = {workspace = true}
+serde = {workspace = true}
+serde_json = {workspace = true}
+time = {workspace = true}
+tokio = {workspace = true}
+tracing = {workspace = true}
+regex = {workspace = true}
+futures = {workspace = true}
+
+[dev-dependencies]
+tempfile = {workspace = true}
