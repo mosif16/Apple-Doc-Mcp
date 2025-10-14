@@ -59,9 +59,10 @@ cargo run -p apple-docs-cli
 - If nothing turns up, re-run `discover_technologies` with a different keyword or pick another framework.
 
 ### Enriched Output
-- Quick Summaries now include inline Swift snippets (when available), platform availability, and curated next steps.
-- Search results show availability badges, SwiftUI ↔ UIKit/AppKit bridge hints, and related symbols pulled from the knowledge base.
-- `Integration Notes` in documentation call out migration tips, UIKit/AppKit counterparts, and related APIs you should explore next.
+- Quick Summaries now include inline Swift snippets (when available), platform availability, curated next steps, and Human Interface Guideline (HIG) highlights for layout, typography, color, and accessibility.
+- Search results show availability badges, SwiftUI ↔ UIKit/AppKit bridge hints, HIG “Design checklist” bullets, and related symbols pulled from the knowledge base.
+- `Integration Notes` in documentation call out migration tips, UIKit/AppKit counterparts, and related APIs you should explore next; the new **Design Guidance** section links directly to relevant HIG articles.
+- `current_technology` surfaces HIG primers for the selected framework so you can jump straight into design best practices, and `discover_technologies` labels frameworks with built-in design guidance.
 
 ## 🧰 Available Tools
 - `discover_technologies` – browse/filter frameworks before selecting one.

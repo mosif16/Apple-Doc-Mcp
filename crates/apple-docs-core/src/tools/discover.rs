@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::{
     markdown,
+    services::design_guidance,
     state::{AppContext, DiscoverySnapshot, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
 };
@@ -100,9 +101,29 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
 
     for framework in &page_items {
         let description = extract_text(&framework.r#abstract);
-        lines.push(format!("### {}", framework.title));
+        let is_design = framework
+            .url
+            .to_ascii_lowercase()
+            .starts_with("/design/human-interface-guidelines");
+        let has_primers = design_guidance::has_primer_mapping(framework);
+        let mut title_line = format!("### {}", framework.title);
+        if is_design || has_primers {
+            title_line.push_str(" · [Design]");
+        }
+        lines.push(title_line);
         if !description.is_empty() {
             lines.push(format!("   {}", trim_with_ellipsis(&description, 180)));
+        }
+        if is_design {
+            lines.push(
+                "   • Focus: Human Interface Guidelines primers for multi-platform design."
+                    .to_string(),
+            );
+        } else if has_primers {
+            lines.push(
+                "   • Design support: SwiftUI/UIKit mappings include layout, typography, and color guidance."
+                    .to_string(),
+            );
         }
         lines.push(format!("   • **Identifier:** {}", framework.identifier));
         lines.push(format!(

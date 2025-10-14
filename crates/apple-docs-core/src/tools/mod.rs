@@ -61,4 +61,7 @@ pub(crate) fn simple_text(text: &str) -> ToolResponse {
     text_response([text.to_string()])
 }
 
+pub use current_technology::definition as current_technology_definition;
+pub use discover::definition as discover_technologies_definition;
+pub use get_documentation::definition as get_documentation_definition;
 pub use search_symbols::definition as search_symbols_definition;

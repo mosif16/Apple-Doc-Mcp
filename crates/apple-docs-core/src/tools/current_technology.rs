@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::{
     markdown,
+    services::design_guidance,
     state::{AppContext, ToolDefinition, ToolHandler, ToolResponse},
     tools::{simple_text, text_response, wrap_handler},
 };
@@ -21,7 +22,7 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
 
 async fn handle(context: Arc<AppContext>) -> Result<ToolResponse> {
     if let Some(active) = context.state.active_technology.read().await.clone() {
-        let lines = vec![
+        let mut lines = vec![
             markdown::header(1, "📘 Current Technology"),
             String::new(),
             markdown::bold("Name", &active.title),
@@ -32,6 +33,27 @@ async fn handle(context: Arc<AppContext>) -> Result<ToolResponse> {
             "• `get_documentation { \"path\": \"SymbolName\" }` to open docs".to_string(),
             "• `choose_technology \"Another Framework\"` to switch".to_string(),
         ];
+
+        if let Ok(sections) = design_guidance::primers_for_technology(&context, &active).await {
+            if !sections.is_empty() {
+                lines.push(String::new());
+                lines.push(markdown::header(2, "Design primers"));
+                for section in sections.iter().take(3) {
+                    if let Some(bullet) = section.bullets.first() {
+                        lines.push(format!("• {} — {}", section.title, bullet.text));
+                    } else if let Some(summary) = section.summary.as_ref() {
+                        lines.push(format!("• {} — {}", section.title, summary));
+                    } else {
+                        lines.push(format!("• {}", section.title));
+                    }
+                }
+                lines.push(format!(
+                    "• Deep dive: `get_documentation {{ \"path\": \"{}\" }}`",
+                    sections[0].slug
+                ));
+            }
+        }
+
         Ok(text_response(lines))
     } else {
         Ok(simple_text(

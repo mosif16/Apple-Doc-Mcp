@@ -3,6 +3,7 @@ use apple_docs_client::types::{FrameworkData, ReferenceData, SymbolData, Technol
 
 use crate::state::{AppContext, FrameworkIndexEntry};
 
+pub mod design_guidance;
 pub mod knowledge;
 
 pub async fn load_active_framework(context: &AppContext) -> Result<FrameworkData> {

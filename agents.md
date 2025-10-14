@@ -118,6 +118,8 @@
 
 ## 15. Outstanding Questions / Future Work
 - Document automated integration tests for MCP tool flows.
+- Evaluate how to ingest Human Interface Guidelines content so SwiftUI symbol and recipe responses can surface platform-specific design checklists (light/dark palettes, typography, accessibility) tuned for the iOS 26 / iPhone 17 target. (Codex agent, 2025-10-14)
+- Expand `design_guidance` mappings to cover additional SwiftUI components (Charts, Map, ShareLink) and non-SwiftUI frameworks while keeping category heuristics accurate. (Codex agent, 2025-10-14)
 - Evaluate caching eviction strategy to limit repo bloat.
 - Investigate incremental documentation updates (diff-based refresh) instead of full rewrites.
 - Consider telemetry or analytics opt-in for common queries to fine-tune defaults (ensure privacy).
@@ -280,6 +282,7 @@ Use this section as the authoritative roadmap and progress log for the full Rust
    - Introduce feature flagging to toggle enriched results for staged rollout; document toggles here.
    - Benchmark impact on search latency; record metrics and adjustments.
    - 2025-10-14 05:59Z (Codex agent): Search output deduplicates duplicate paths, annotates availability summaries, and surfaces quick tips/bridges from the new knowledge base.
+   - 2025-10-14 06:20Z (Codex agent): Flagged need for design-forward overlays (HIG checklists, typography/color guidance) when SwiftUI symbols map to iOS 26 interface patterns; pending ingestion strategy from Section 15.
 
 5. **Recipe & Guided Workflow Responses** — Status: Completed (Owner: Codex agent · Started 2025-10-14 05:55Z · Completed 2025-10-14 06:00Z)
    - Design “How do I…?” prompt handling (new tool or parameter) that assembles step-by-step guidance.
@@ -298,3 +301,15 @@ Use this section as the authoritative roadmap and progress log for the full Rust
    - Collect internal feedback, iterate on scoring thresholds, and finalize release notes.
    - Document final deployment steps, feature flags, and monitoring hooks in this section and update Section 14 (Release Process).
    - 2025-10-14 06:00Z (Codex agent): Ran `cargo fmt` + `cargo test` to validate integration; no regressions observed, telemetry hooks pending future iteration.
+8. **Design Overlay Integration** — Status: Completed (Owner: Codex agent · Started 2025-10-14 06:32Z · Completed 2025-10-14 07:20Z)
+   - Objective: Enrich existing tools with Human Interface Guidelines insights so agents designing for iOS 26/iPhone 17 receive actionable layout, color, typography, and accessibility guidance without extra tool calls.
+   - Phase A — HIG ingestion & caching (ETA: 2025-10-14): Expand `AppleDevDocsClient` to persist `design/Human-Interface-Guidelines` payloads, normalize checklist data (light/dark palettes, typography rules, accessibility cues), and expose it via a lightweight lookup module.
+     - 2025-10-14 06:44Z (Codex agent): Implemented `design_guidance` service to fetch/cache HIG topics, added path normalization for `doc://com.apple.HIG/*`, and proven with `cargo check`; ready to feed overlays.
+   - Phase B — Search overlays (ETA: 2025-10-14): Update `search_symbols` scoring output to append HIG-derived checklists, SF Symbol suggestions, and large-device layout notes; ensure deduplication and performance budgets remain intact.
+     - 2025-10-14 06:55Z (Codex agent): `search_symbols` now appends categorized design checklist bullets and direct HIG references (cached via `design_guidance`), maintaining dedupe and respecting existing platform metadata.
+   - Phase C — Documentation summaries (ETA: 2025-10-14): Extend `get_documentation` summaries to highlight platform breakpoints, typography guidance, and design cautions; fall back gracefully for code-only symbols.
+     - 2025-10-14 06:58Z (Codex agent): Quick Summary and new “Design Guidance” sections surface HIG highlights for symbols/topics, normalized `doc://com.apple.HIG/*` paths, and include actionable bullets for layout/color/accessibility.
+   - Phase D — Technology context (ETA: 2025-10-14): Refresh `current_technology` quickstart guidance with HIG primer links and color/typography resources relevant to the active framework.
+     - 2025-10-14 07:00Z (Codex agent): `current_technology` adds design primers mapped to HIG collections, highlighting typography/color/layout starters and linking to detailed articles for SwiftUI teams.
+   - Success metrics: ≥80% of top SwiftUI queries display at least one design checklist item; Quick Summary includes platform-aware design notes for all sampled view/layout symbols; latencies remain within ±10% of baseline.
+   - Verification: `cargo test --test design_overlay` validates search/documentation outputs include design guidance; `cargo test` covers the broader suite.

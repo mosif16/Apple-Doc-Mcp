@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::{
     markdown,
-    services::knowledge,
+    services::{design_guidance, knowledge},
     state::{AppContext, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
 };
@@ -77,13 +77,35 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             Ok(value) => {
                 if let Ok(symbol) = serde_json::from_value::<SymbolData>(value.clone()) {
                     *context.state.last_symbol.write().await = Some(symbol.clone());
-                    let lines = build_response(&active.title, &symbol);
+                    let symbol_title = symbol
+                        .metadata
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| "Symbol".to_string());
+                    let symbol_path = format!("/{}", normalized);
+                    let design_sections =
+                        design_guidance::guidance_for(&context, &symbol_title, &symbol_path)
+                            .await
+                            .unwrap_or_default();
+                    let lines = build_response(&active.title, &symbol, &design_sections);
                     return Ok(text_response(lines));
                 }
 
                 match serde_json::from_value::<TopicData>(value) {
                     Ok(topic) => {
-                        let lines = build_topic_response(&active.title, &path, &topic);
+                        let topic_title =
+                            topic.metadata.title.clone().unwrap_or_else(|| path.clone());
+                        let topic_path = if path.starts_with('/') {
+                            path.clone()
+                        } else {
+                            format!("/{path}")
+                        };
+                        let design_sections =
+                            design_guidance::guidance_for(&context, &topic_title, &topic_path)
+                                .await
+                                .unwrap_or_default();
+                        let lines =
+                            build_topic_response(&active.title, &path, &topic, &design_sections);
                         return Ok(text_response(lines));
                     }
                     Err(error) => {
@@ -115,8 +137,16 @@ fn normalize_path(path: &str, identifier: &str) -> String {
     let without_doc = trimmed
         .strip_prefix("doc://com.apple.SwiftUI/")
         .or_else(|| trimmed.strip_prefix("doc://com.apple.documentation/"))
+        .or_else(|| trimmed.strip_prefix("doc://com.apple.HIG/"))
         .unwrap_or(trimmed);
     let without_prefix = without_doc.trim_start_matches('/');
+
+    if without_prefix.starts_with("design/")
+        || without_prefix.starts_with("Design/")
+        || without_prefix.starts_with("human-interface-guidelines/")
+    {
+        return without_prefix.to_ascii_lowercase();
+    }
 
     if without_prefix.starts_with("documentation/") {
         without_prefix.to_string()
@@ -126,27 +156,39 @@ fn normalize_path(path: &str, identifier: &str) -> String {
 }
 
 fn fallback_path(path: &str) -> String {
-    let trimmed = path
-        .trim()
+    let trimmed_input = path.trim();
+    let without_doc = trimmed_input
         .strip_prefix("doc://com.apple.SwiftUI/")
-        .or_else(|| path.trim().strip_prefix("doc://com.apple.documentation/"))
-        .unwrap_or(path.trim())
-        .trim_start_matches('/');
-    if trimmed.starts_with("documentation/") {
+        .or_else(|| trimmed_input.strip_prefix("doc://com.apple.documentation/"))
+        .or_else(|| trimmed_input.strip_prefix("doc://com.apple.HIG/"))
+        .unwrap_or(trimmed_input);
+    let trimmed = without_doc.trim_start_matches('/');
+
+    if trimmed.starts_with("design/")
+        || trimmed.starts_with("Design/")
+        || trimmed.starts_with("human-interface-guidelines/")
+    {
+        trimmed.to_ascii_lowercase()
+    } else if trimmed.starts_with("documentation/") {
         trimmed.to_string()
     } else {
         format!("documentation/{}", trimmed)
     }
 }
 
-fn build_topic_response(technology_title: &str, path: &str, topic: &TopicData) -> Vec<String> {
+fn build_topic_response(
+    technology_title: &str,
+    path: &str,
+    topic: &TopicData,
+    design_sections: &[design_guidance::DesignSection],
+) -> Vec<String> {
     let title = topic
         .metadata
         .title
         .clone()
         .unwrap_or_else(|| "Topic".to_string());
     let description = extract_text(&topic.r#abstract);
-    let summary = build_topic_summary(topic, &description);
+    let summary = build_topic_summary(topic, &description, design_sections);
 
     let mut lines = vec![
         markdown::header(1, &title),
@@ -167,6 +209,25 @@ fn build_topic_response(technology_title: &str, path: &str, topic: &TopicData) -
         lines.push("No overview available.".to_string());
     } else {
         lines.push(description);
+    }
+
+    if !design_sections.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Design Guidance"));
+        for section in design_sections.iter().take(2) {
+            lines.push(format!("### {}", section.title));
+            if let Some(summary) = section.summary.as_ref() {
+                lines.push(format!("_{summary}_"));
+            }
+            for bullet in section.bullets.iter().take(4) {
+                lines.push(format!("• **{}:** {}", bullet.category, bullet.text));
+            }
+            lines.push(format!(
+                "Read more: `get_documentation {{ \"path\": \"{}\" }}`",
+                section.slug
+            ));
+            lines.push(String::new());
+        }
     }
 
     if !topic.topic_sections.is_empty() {
@@ -196,7 +257,11 @@ fn build_topic_response(technology_title: &str, path: &str, topic: &TopicData) -
     lines
 }
 
-fn build_response(technology_title: &str, symbol: &SymbolData) -> Vec<String> {
+fn build_response(
+    technology_title: &str,
+    symbol: &SymbolData,
+    design_sections: &[design_guidance::DesignSection],
+) -> Vec<String> {
     let title = symbol
         .metadata
         .title
@@ -227,6 +292,7 @@ fn build_response(technology_title: &str, symbol: &SymbolData) -> Vec<String> {
         &description,
         snippet.as_ref(),
         quick_tip,
+        design_sections,
     );
 
     let mut lines = vec![
@@ -254,6 +320,25 @@ fn build_response(technology_title: &str, symbol: &SymbolData) -> Vec<String> {
             snippet.language,
             snippet.code.trim_end()
         ));
+    }
+
+    if !design_sections.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Design Guidance"));
+        for section in design_sections.iter().take(2) {
+            lines.push(format!("### {}", section.title));
+            if let Some(summary) = section.summary.as_ref() {
+                lines.push(format!("_{summary}_"));
+            }
+            for bullet in section.bullets.iter().take(4) {
+                lines.push(format!("• **{}:** {}", bullet.category, bullet.text));
+            }
+            lines.push(format!(
+                "Read more: `get_documentation {{ \"path\": \"{}\" }}`",
+                section.slug
+            ));
+            lines.push(String::new());
+        }
     }
 
     if let Some(entry) = knowledge_entry {
@@ -333,6 +418,7 @@ fn build_symbol_summary(
     overview: &str,
     snippet: Option<&CodeSnippet>,
     quick_tip: Option<&str>,
+    design_sections: &[design_guidance::DesignSection],
 ) -> Vec<String> {
     let mut summary = Vec::new();
 
@@ -369,10 +455,36 @@ fn build_symbol_summary(
         summary.push("• Sample code: Inline examples available in documentation.".to_string());
     }
 
+    if let Some(design_summary) = summarize_design(design_sections) {
+        summary.push(format!("• Design: {design_summary}"));
+    }
+
     summary
 }
 
-fn build_topic_summary(topic: &TopicData, overview: &str) -> Vec<String> {
+fn summarize_design(sections: &[design_guidance::DesignSection]) -> Option<String> {
+    let mut highlights = Vec::new();
+    for section in sections {
+        if let Some(bullet) = section.bullets.first() {
+            highlights.push(format!("{}: {}", bullet.category, bullet.text));
+        }
+        if highlights.len() >= 2 {
+            break;
+        }
+    }
+
+    if highlights.is_empty() {
+        None
+    } else {
+        Some(highlights.join(" · "))
+    }
+}
+
+fn build_topic_summary(
+    topic: &TopicData,
+    overview: &str,
+    design_sections: &[design_guidance::DesignSection],
+) -> Vec<String> {
     let mut summary = Vec::new();
 
     let brief = overview.trim();
@@ -386,6 +498,10 @@ fn build_topic_summary(topic: &TopicData, overview: &str) -> Vec<String> {
 
     if let Some(samples) = summarize_sample_code(&topic.topic_sections, &topic.references) {
         summary.push(format!("• Sample code: {samples}"));
+    }
+
+    if let Some(design_summary) = summarize_design(design_sections) {
+        summary.push(format!("• Design: {design_summary}"));
     }
 
     summary
@@ -703,6 +819,7 @@ mod tests {
             "Displays styled text content.",
             None,
             None,
+            &[],
         );
 
         assert!(summary
@@ -717,7 +834,8 @@ mod tests {
     #[test]
     fn topic_summary_includes_sections() {
         let topic = sample_topic();
-        let summary = build_topic_summary(&topic, "Learn how to compose complex SwiftUI views.");
+        let summary =
+            build_topic_summary(&topic, "Learn how to compose complex SwiftUI views.", &[]);
 
         assert!(summary.iter().any(|line| line.contains("Summary:")));
         assert!(summary
@@ -737,6 +855,7 @@ mod tests {
             "Displays styled text.",
             snippet.as_ref(),
             None,
+            &[],
         );
 
         assert!(summary

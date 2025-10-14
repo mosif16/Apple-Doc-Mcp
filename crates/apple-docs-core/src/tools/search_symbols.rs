@@ -10,8 +10,8 @@ use serde::Deserialize;
 use crate::{
     markdown,
     services::{
-        ensure_framework_index, ensure_global_framework_index, expand_identifiers, knowledge,
-        load_active_framework,
+        design_guidance, ensure_framework_index, ensure_global_framework_index, expand_identifiers,
+        knowledge, load_active_framework,
     },
     state::{AppContext, FrameworkIndexEntry, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
@@ -218,6 +218,28 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
                     lines.push(format!("  Bridge: {}", summary));
                 }
             }
+            if let Ok(sections) = design_guidance::guidance_for(&context, &title, &path).await {
+                let mut highlights = Vec::new();
+                for section in &sections {
+                    if let Some(bullet) = section.bullets.first() {
+                        highlights.push(format!("{}: {}", bullet.category, bullet.text));
+                    }
+                }
+                if !highlights.is_empty() {
+                    let summary = highlights
+                        .into_iter()
+                        .take(2)
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    lines.push(format!("  Design checklist: {}", summary));
+                }
+                if let Some(section) = sections.first() {
+                    lines.push(format!(
+                        "  HIG reference: `get_documentation {{ \"path\": \"{}\" }}`",
+                        section.slug
+                    ));
+                }
+            }
             lines.push(String::new());
         }
     }
@@ -368,6 +390,28 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
                     .collect::<Vec<_>>()
                     .join(" · ");
                 lines.push(format!("  Bridge: {}", summary));
+            }
+        }
+        if let Ok(sections) = design_guidance::guidance_for(&context, &title, &path).await {
+            let mut highlights = Vec::new();
+            for section in &sections {
+                if let Some(bullet) = section.bullets.first() {
+                    highlights.push(format!("{}: {}", bullet.category, bullet.text));
+                }
+            }
+            if !highlights.is_empty() {
+                let summary = highlights
+                    .into_iter()
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                lines.push(format!("  Design checklist: {}", summary));
+            }
+            if let Some(section) = sections.first() {
+                lines.push(format!(
+                    "  HIG reference: `get_documentation {{ \"path\": \"{}\" }}`",
+                    section.slug
+                ));
             }
         }
         lines.push(String::new());
