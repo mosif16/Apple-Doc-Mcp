@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use apple_docs_client::types::{
@@ -10,7 +10,7 @@ use serde::Deserialize;
 use crate::{
     markdown,
     services::{
-        ensure_framework_index, ensure_global_framework_index, expand_identifiers,
+        ensure_framework_index, ensure_global_framework_index, expand_identifiers, knowledge,
         load_active_framework,
     },
     state::{AppContext, FrameworkIndexEntry, ToolDefinition, ToolHandler, ToolResponse},
@@ -80,8 +80,8 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
     let mut index = ensure_framework_index(&context).await?;
     let max_results = args.max_results.unwrap_or(20).max(1);
 
-    let mut matches = collect_matches(&index, &args);
-    if matches.is_empty() {
+    let mut ranked_matches = collect_matches(&index, &args);
+    if ranked_matches.is_empty() {
         let framework = load_active_framework(&context).await?;
         let identifiers: Vec<String> = framework
             .topic_sections
@@ -91,17 +91,37 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
             .collect();
         if !identifiers.is_empty() {
             index = expand_identifiers(&context, &identifiers).await?;
-            matches = collect_matches(&index, &args);
+            ranked_matches = collect_matches(&index, &args);
         }
     }
 
-    let matches = matches
-        .into_iter()
-        .take(max_results)
-        .map(|(_, entry)| entry)
-        .collect::<Vec<_>>();
+    let mut deduped_matches = Vec::new();
+    if !ranked_matches.is_empty() {
+        let mut seen_paths = HashSet::new();
+        for (_, entry) in ranked_matches {
+            let path = entry
+                .reference
+                .url
+                .clone()
+                .unwrap_or_else(|| "(unknown path)".to_string());
+            let title = entry
+                .reference
+                .title
+                .clone()
+                .unwrap_or_else(|| "Symbol".to_string());
+            let key = dedup_key(&path, &title);
+            if seen_paths.insert(key) {
+                deduped_matches.push(entry);
+            }
+            if deduped_matches.len() >= max_results {
+                break;
+            }
+        }
+    }
+
+    let match_count = deduped_matches.len();
     let mut fallback = Vec::new();
-    if matches.is_empty() {
+    if match_count == 0 {
         fallback = perform_fallback_search(&context, &args, max_results).await?;
     }
 
@@ -109,13 +129,13 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
         markdown::header(1, &format!("🔍 Search Results for \"{}\"", args.query)),
         String::new(),
         markdown::bold("Technology", &technology.title),
-        markdown::bold("Matches", &matches.len().to_string()),
+        markdown::bold("Matches", &match_count.to_string()),
         String::new(),
         markdown::header(2, "Symbols"),
         String::new(),
     ];
 
-    if matches.is_empty() {
+    if deduped_matches.is_empty() {
         lines.push("No symbols matched those terms within this technology.".to_string());
         lines.push("Try broader keywords (e.g. \"tab\"), explore synonyms, or run `discover_technologies` again.".to_string());
         if !fallback.is_empty() {
@@ -138,7 +158,7 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
             }
         }
     } else {
-        for entry in matches {
+        for entry in deduped_matches {
             let title = entry
                 .reference
                 .title
@@ -150,17 +170,17 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
                 .as_ref()
                 .map(|segments| extract_text(segments))
                 .unwrap_or_default();
-            let platforms = entry
-                .reference
-                .platforms
-                .as_ref()
-                .map(|platforms| format_platforms(platforms))
-                .unwrap_or_else(|| "All platforms".to_string());
             let path = entry
                 .reference
                 .url
                 .clone()
                 .unwrap_or_else(|| "(unknown path)".to_string());
+            let platform_slice = entry
+                .reference
+                .platforms
+                .as_ref()
+                .map(|platforms| platforms.as_slice());
+            let (platform_label, availability) = classify_platforms(&path, platform_slice);
             lines.push(format!(
                 "• **{}** — {}",
                 title,
@@ -170,7 +190,34 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
                 "  `get_documentation {{ \"path\": \"{}\" }}`",
                 path
             ));
-            lines.push(format!("  Platforms: {}", platforms));
+            lines.push(format!("  Platforms: {}", platform_label));
+            if let Some(introduced) = availability {
+                lines.push(format!("  Availability: {}", introduced));
+            }
+            if let Some(entry) = knowledge::lookup(&technology.title, &title) {
+                if let Some(tip) = entry.quick_tip {
+                    lines.push(format!("  Tip: {}", tip));
+                }
+                let related = knowledge::related_items(entry);
+                if !related.is_empty() {
+                    let summary = related
+                        .iter()
+                        .map(|item| item.title)
+                        .take(3)
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    lines.push(format!("  Related: {}", summary));
+                }
+                let links = knowledge::integration_links(entry);
+                if !links.is_empty() {
+                    let summary = links
+                        .iter()
+                        .map(|link| format!("{} {}", link.framework, link.title))
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    lines.push(format!("  Bridge: {}", summary));
+                }
+            }
             lines.push(String::new());
         }
     }
@@ -213,7 +260,28 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
             .then_with(|| a.technology_title.cmp(&b.technology_title))
     });
 
-    let matches = aggregate.into_iter().take(max_results).collect::<Vec<_>>();
+    let mut seen_paths = HashSet::new();
+    let mut matches = Vec::new();
+    for item in aggregate {
+        let path = item
+            .entry
+            .reference
+            .url
+            .clone()
+            .unwrap_or_else(|| "(unknown path)".to_string());
+        let title = item
+            .entry
+            .reference
+            .title
+            .clone()
+            .unwrap_or_else(|| "Symbol".to_string());
+        if seen_paths.insert(dedup_key(&path, &title)) {
+            matches.push(item);
+        }
+        if matches.len() >= max_results {
+            break;
+        }
+    }
 
     let mut lines = vec![
         markdown::header(
@@ -249,19 +317,19 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
             .as_ref()
             .map(|segments| extract_text(segments))
             .unwrap_or_default();
-        let platforms = matched
-            .entry
-            .reference
-            .platforms
-            .as_ref()
-            .map(|platforms| format_platforms(platforms))
-            .unwrap_or_else(|| "All platforms".to_string());
         let path = matched
             .entry
             .reference
             .url
             .clone()
             .unwrap_or_else(|| "(unknown path)".to_string());
+        let platform_slice = matched
+            .entry
+            .reference
+            .platforms
+            .as_ref()
+            .map(|platforms| platforms.as_slice());
+        let (platform_label, availability) = classify_platforms(&path, platform_slice);
 
         lines.push(format!(
             "• **{}** — {}",
@@ -274,7 +342,34 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
             "  `get_documentation {{ \"path\": \"{}\" }}`",
             path
         ));
-        lines.push(format!("  Platforms: {}", platforms));
+        lines.push(format!("  Platforms: {}", platform_label));
+        if let Some(introduced) = availability {
+            lines.push(format!("  Availability: {}", introduced));
+        }
+        if let Some(entry) = knowledge::lookup(&matched.technology_title, &title) {
+            if let Some(tip) = entry.quick_tip {
+                lines.push(format!("  Tip: {}", tip));
+            }
+            let related = knowledge::related_items(entry);
+            if !related.is_empty() {
+                let summary = related
+                    .iter()
+                    .map(|item| item.title)
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                lines.push(format!("  Related: {}", summary));
+            }
+            let links = knowledge::integration_links(entry);
+            if !links.is_empty() {
+                let summary = links
+                    .iter()
+                    .map(|link| format!("{} {}", link.framework, link.title))
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                lines.push(format!("  Bridge: {}", summary));
+            }
+        }
         lines.push(String::new());
     }
 
@@ -369,6 +464,50 @@ struct GlobalMatch {
     entry: FrameworkIndexEntry,
     technology_title: String,
     technology_identifier: String,
+}
+
+fn classify_platforms(path: &str, platforms: Option<&[PlatformInfo]>) -> (String, Option<String>) {
+    if is_design_material(path) {
+        return ("Design guidance".to_string(), None);
+    }
+
+    match platforms {
+        Some(slice) if !slice.is_empty() => {
+            let availability = summarize_introduced(slice);
+            (format_platforms(slice), availability)
+        }
+        _ => ("All platforms".to_string(), None),
+    }
+}
+
+fn summarize_introduced(platforms: &[PlatformInfo]) -> Option<String> {
+    let mut entries = Vec::new();
+    for platform in platforms {
+        if let Some(version) = &platform.introduced_at {
+            let mut text = format!("{} {}", platform.name, version);
+            if platform.beta {
+                text.push_str(" (Beta)");
+            }
+            entries.push(text);
+        }
+    }
+    if entries.is_empty() {
+        None
+    } else {
+        Some(entries.join(" · "))
+    }
+}
+
+fn is_design_material(path: &str) -> bool {
+    path.contains("/design/")
+}
+
+fn dedup_key(path: &str, title: &str) -> String {
+    if path == "(unknown path)" {
+        format!("unknown::{}", title.to_lowercase())
+    } else {
+        path.to_lowercase()
+    }
 }
 
 async fn perform_fallback_search(

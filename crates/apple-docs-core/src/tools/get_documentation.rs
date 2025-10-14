@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::{
     markdown,
+    services::knowledge,
     state::{AppContext, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
 };
@@ -17,6 +18,13 @@ use crate::{
 #[derive(Debug, Deserialize)]
 struct Args {
     path: String,
+}
+
+#[derive(Debug, Clone)]
+struct CodeSnippet {
+    language: String,
+    code: String,
+    caption: Option<String>,
 }
 
 pub fn definition() -> (ToolDefinition, ToolHandler) {
@@ -201,7 +209,25 @@ fn build_response(technology_title: &str, symbol: &SymbolData) -> Vec<String> {
         .unwrap_or_else(|| "Unknown".to_string());
     let platforms = format_platforms(symbol.metadata.platforms.as_slice());
     let description = extract_text(&symbol.r#abstract);
-    let summary = build_symbol_summary(symbol, &kind, &platforms, &description);
+    let knowledge_entry = knowledge::lookup(technology_title, &title);
+    let quick_tip = knowledge_entry.and_then(|entry| entry.quick_tip);
+    let snippet_from_knowledge =
+        knowledge_entry
+            .and_then(knowledge::snippet)
+            .map(|snippet| CodeSnippet {
+                language: snippet.language.to_string(),
+                code: snippet.code.to_string(),
+                caption: snippet.caption.map(|caption| caption.to_string()),
+            });
+    let snippet = snippet_from_knowledge.or_else(|| extract_symbol_snippet(symbol));
+    let summary = build_symbol_summary(
+        symbol,
+        &kind,
+        &platforms,
+        &description,
+        snippet.as_ref(),
+        quick_tip,
+    );
 
     let mut lines = vec![
         markdown::header(1, &title),
@@ -215,6 +241,40 @@ fn build_response(technology_title: &str, symbol: &SymbolData) -> Vec<String> {
         lines.push(String::new());
         lines.push(markdown::header(2, "Quick Summary"));
         lines.extend(summary);
+    }
+
+    if let Some(snippet) = &snippet {
+        lines.push(String::new());
+        lines.push(markdown::header(3, "Sample Code"));
+        if let Some(caption) = &snippet.caption {
+            lines.push(format!("_{caption}_"));
+        }
+        lines.push(format!(
+            "```{}\n{}\n```",
+            snippet.language,
+            snippet.code.trim_end()
+        ));
+    }
+
+    if let Some(entry) = knowledge_entry {
+        let related = knowledge::related_items(entry);
+        let integration = knowledge::integration_links(entry);
+        if !related.is_empty() || !integration.is_empty() {
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Integration Notes"));
+            for link in integration {
+                lines.push(format!(
+                    "• Bridge to {}: {} — {} (`get_documentation {{ \"path\": \"{}\" }}`)",
+                    link.framework, link.title, link.note, link.path
+                ));
+            }
+            for item in related {
+                lines.push(format!(
+                    "• Related: {} — {} (`get_documentation {{ \"path\": \"{}\" }}`)",
+                    item.title, item.note, item.path
+                ));
+            }
+        }
     }
 
     lines.push(String::new());
@@ -271,6 +331,8 @@ fn build_symbol_summary(
     kind: &str,
     platforms: &str,
     overview: &str,
+    snippet: Option<&CodeSnippet>,
+    quick_tip: Option<&str>,
 ) -> Vec<String> {
     let mut summary = Vec::new();
 
@@ -289,11 +351,19 @@ fn build_symbol_summary(
         summary.push(format!("• Summary: {}", trim_with_ellipsis(brief, 140)));
     }
 
+    if let Some(tip) = quick_tip {
+        summary.push(format!("• Tip: {tip}"));
+    }
+
     if let Some(highlights) = summarize_sections(&symbol.topic_sections) {
         summary.push(format!("• Sections to explore: {highlights}"));
     }
 
-    if let Some(samples) = summarize_sample_code(&symbol.topic_sections, &symbol.references) {
+    if let Some(snippet) = snippet {
+        let caption = snippet.caption.as_deref().unwrap_or("See snippet below.");
+        summary.push(format!("• Sample code: {}", caption));
+    } else if let Some(samples) = summarize_sample_code(&symbol.topic_sections, &symbol.references)
+    {
         summary.push(format!("• Sample code: {samples}"));
     } else if has_code_examples(&symbol.primary_content_sections) {
         summary.push("• Sample code: Inline examples available in documentation.".to_string());
@@ -404,6 +474,92 @@ fn summarize_sample_code(
 
 fn has_code_examples(sections: &[Value]) -> bool {
     sections.iter().any(contains_code_listing)
+}
+
+fn extract_symbol_snippet(symbol: &SymbolData) -> Option<CodeSnippet> {
+    if let Some(snippet) = extract_snippet_from_sections(&symbol.primary_content_sections) {
+        return Some(snippet);
+    }
+    None
+}
+
+fn extract_snippet_from_sections(sections: &[Value]) -> Option<CodeSnippet> {
+    for value in sections {
+        if let Some(snippet) = extract_snippet_from_value(value) {
+            return Some(snippet);
+        }
+    }
+    None
+}
+
+fn extract_snippet_from_value(value: &Value) -> Option<CodeSnippet> {
+    match value {
+        Value::Object(map) => {
+            if let Some(snippet) = parse_code_listing(map) {
+                return Some(snippet);
+            }
+            for nested in map.values() {
+                if let Some(snippet) = extract_snippet_from_value(nested) {
+                    return Some(snippet);
+                }
+            }
+            None
+        }
+        Value::Array(items) => {
+            for item in items {
+                if let Some(snippet) = extract_snippet_from_value(item) {
+                    return Some(snippet);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_code_listing(map: &serde_json::Map<String, Value>) -> Option<CodeSnippet> {
+    let kind = map
+        .get("type")
+        .or_else(|| map.get("kind"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !kind.eq_ignore_ascii_case("codelisting") {
+        return None;
+    }
+
+    let code_value = map.get("code")?;
+    let code = match code_value {
+        Value::Array(lines) => lines
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Value::String(text) => text.clone(),
+        _ => String::new(),
+    };
+
+    if code.trim().is_empty() {
+        return None;
+    }
+
+    let language = map
+        .get("syntax")
+        .or_else(|| map.get("language"))
+        .and_then(Value::as_str)
+        .unwrap_or("swift")
+        .to_string();
+
+    let caption = map
+        .get("caption")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .or_else(|| map.get("title").and_then(Value::as_str).map(String::from));
+
+    Some(CodeSnippet {
+        language,
+        code,
+        caption,
+    })
 }
 
 fn contains_code_listing(value: &Value) -> bool {
@@ -545,6 +701,8 @@ mod tests {
             "Struct",
             "iOS 15.0, macOS",
             "Displays styled text content.",
+            None,
+            None,
         );
 
         assert!(summary
@@ -571,10 +729,22 @@ mod tests {
     #[test]
     fn symbol_summary_mentions_inline_examples_when_no_sample_refs() {
         let symbol = symbol_with_inline_examples();
-        let summary = build_symbol_summary(&symbol, "Struct", "iOS 15.0", "Displays styled text.");
+        let snippet = extract_symbol_snippet(&symbol);
+        let summary = build_symbol_summary(
+            &symbol,
+            "Struct",
+            "iOS 15.0",
+            "Displays styled text.",
+            snippet.as_ref(),
+            None,
+        );
 
         assert!(summary
             .iter()
-            .any(|line| line.contains("Inline examples available")));
+            .any(|line| line.contains("Sample code: See snippet below.")));
+
+        let snippet = snippet.expect("snippet should be present");
+        assert_eq!(snippet.language, "swift");
+        assert!(snippet.code.contains("Text(\"Hello World\")"));
     }
 }

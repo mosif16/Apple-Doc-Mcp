@@ -31,6 +31,7 @@ tracing-subscriber = {version = "0.3", features = ["fmt", "env-filter"]}
 tempfile = "3.10"
 regex = "1.11"
 futures = "0.3"
+once_cell = "1.19"
 
 [workspace.lints.clippy]
 pedantic = "warn"

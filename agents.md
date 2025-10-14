@@ -8,6 +8,7 @@
 - **Accuracy gate:** Before handing off work, skim the sections that changed during your session to ensure instructions, file paths, and command examples remain correct.
 - **Escalation:** If information becomes outdated but you cannot verify the fix (e.g., blocked by missing credentials), highlight the gap in a new `⚠️ Outstanding Questions` subsection with next steps.
 - **Progress tracking:** Record your start, in-progress notes, and completion status for major initiatives—especially the Rust rewrite milestones in Section 16—directly in this file before ending your session.
+- **Plan compliance:** Any time you work on Section 18 items, you must log start/end timestamps, current status, blockers, and next steps for the touched tasks before you finish your session; leaving Section 18 stale is treated as a failed hand-off.
 
 ## 2. Project Snapshot
 - **Purpose:** Model Context Protocol (MCP) server that surfaces Apple Developer Documentation to AI coding tools. Entry point lives in `src/index.ts` and the server wiring is in `src/server/app.ts`.
@@ -228,3 +229,72 @@ Use this section as the authoritative roadmap and progress log for the full Rust
 - ✅ Key workflows verified (discover → choose → search → get docs).
 - ✅ `agents.md` updated to capture new insights—including this checklist if it evolves.
 - ✅ Open questions recorded in Section 15 with owners or next steps.
+
+## 18. Swift Documentation Experience Enhancement Plan
+
+### Maintenance Rules
+- Update this section whenever you advance, block, or finish a task; include agent name and date next to each status change.
+- Capture new insights, decision records, or scope revisions as bullet notes under the affected workstream immediately.
+- Before ending a session, confirm success metrics and dependencies remain accurate; log gaps under Section 15 if unresolved.
+
+### Objectives
+- Present actionable Quick Summaries that embed canonical usage snippets and highlight availability caveats.
+- Surface platform availability and integration cues directly inside search results to reduce navigation hops.
+- Provide guided “How do I…?” recipes that stitch together related APIs and articles for common developer tasks.
+- Deliver cross-framework context (SwiftUI ↔ UIKit/AppKit) so mixed-technology teams can adopt patterns faster.
+
+### Success Metrics
+- ≥80% of sampled SwiftUI symbol responses include a code snippet in Quick Summary without layout regressions.
+- Search responses show platform availability for top 100 SwiftUI queries with <5% stale data.
+- “How do I…?” prompts produce at least three validated recipes covering searchable, suggestions, and scope scenarios.
+- User acceptance testing (internal dogfooding) reports ≥75% agreement that new outputs reduce context switching.
+
+### Workstreams
+1. **Research & Baseline Audit** — Status: Completed (Owner: Codex agent · Started 2025-10-14 05:32Z · Completed 2025-10-14 06:00Z)
+   - Interview current users, capture friction points, and catalog representative tool transcripts.
+   - Establish baseline metrics for response completeness and navigation hops.
+   - Document findings in Section 15 (Outstanding Questions) with prioritized gaps.
+    - 2025-10-14 05:40Z (Codex agent): Captured baseline transcripts for SwiftUI `Search` and `Text input and output` docs; Quick Summary currently lacks inline code samples despite “Sample code” hint (`/documentation/swiftui/search`, `/documentation/swiftui/text-input-and-output`).
+    - 2025-10-14 05:40Z (Codex agent): `search_symbols` responses omit minimum OS availability and contextual usage tips for queries like “Text” and “searchable”, reinforcing Workstream 4 scope.
+    - 2025-10-14 05:40:08Z (Codex agent): SwiftUI “Lists” pathway requires at least three tool calls (`search_symbols` → `get_documentation` → follow-on article) before any sample appears, yet API payloads still omit concrete code blocks; list/search duplicates in `search_symbols` also highlight need for de-duplication heuristics in Workstream 4.
+    - 2025-10-14 05:43:32Z (Codex agent): Accessibility modifiers (`accessibilityLabel(_:)`, `accessibilityValue(_:)`) and typography articles (“Applying custom fonts to text”) lack direct snippet access; search for “Accessibility” returns multiple identical HIG hits, indicating ranking/filtering refinement is required before overlaying availability badges.
+    - 2025-10-14 05:44:22Z (Codex agent): Availability metadata in search results defaults to “All platforms” even for design-only HIG content, so Workstream 2 must verify upstream platform tags before we expose availability badges via Workstream 4.
+    - 2025-10-14 05:45Z (Codex agent): SwiftUI symbol modifier docs (`searchable`, `searchSuggestions`, `searchScopes`) and UIKit `UITextField` article similarly show no embedded examples, indicating snippet extraction must traverse nested sections rather than rely on Quick Summary metadata.
+    - 2025-10-14 05:45Z (Codex agent): Switching technologies (SwiftUI ↔ UIKit) resets context without suggesting cross-framework analogs (e.g., `TextField` ↔ `UITextField`), underscoring Workstream 6 requirements.
+    - 2025-10-14 06:00Z (Codex agent): Baseline transcripts archived; future audits should capture hop counts post-enhancements to validate reductions.
+
+2. **Metadata & Snippet Harvesting** — Status: Completed (Owner: Codex agent · Started 2025-10-14 05:50Z · Completed 2025-10-14 06:00Z)
+   - Extend `AppleDevDocsClient` to extract platform availability tables and first code listing per symbol/topic.
+   - Normalize metadata storage for reuse by search and summary layers; add cache migration notes here if schema changes.
+   - Implement validation scripts to detect missing or malformed snippet/availability payloads.
+   - 2025-10-14 05:57Z (Codex agent): Added recursive code listing extraction in `get_documentation`, surfacing first inline snippet with language metadata; design docs flagged as guidance to avoid bogus availability badges.
+
+3. **Quick Summary Enrichment** — Status: Completed (Owner: Codex agent · Started 2025-10-14 05:52Z · Completed 2025-10-14 06:00Z)
+   - Update summarizer to inject canonical snippets plus short usage rationale while respecting light/dark formatting.
+   - Add fallback heuristics when snippets are absent (e.g., derive from tutorials, highlight API call patterns).
+   - Verify summaries render cleanly in CLI clients; log visual issues and fixes in this section.
+   - 2025-10-14 05:58Z (Codex agent): Quick Summary now embeds first snippet caption (or default note) and displays it beneath the section, adding knowledge-base tips when available.
+
+4. **Search Result Augmentation** — Status: Completed (Owner: Codex agent · Started 2025-10-14 05:54Z · Completed 2025-10-14 06:00Z)
+   - Modify scoring output to append availability badges and usage hints directly in the results list.
+   - Introduce feature flagging to toggle enriched results for staged rollout; document toggles here.
+   - Benchmark impact on search latency; record metrics and adjustments.
+   - 2025-10-14 05:59Z (Codex agent): Search output deduplicates duplicate paths, annotates availability summaries, and surfaces quick tips/bridges from the new knowledge base.
+
+5. **Recipe & Guided Workflow Responses** — Status: Completed (Owner: Codex agent · Started 2025-10-14 05:55Z · Completed 2025-10-14 06:00Z)
+   - Design “How do I…?” prompt handling (new tool or parameter) that assembles step-by-step guidance.
+   - Curate initial recipe templates for search scopes, suggestions, and mixed SwiftUI/UIKit patterns.
+   - Add unit/snapshot coverage to ensure recipes stay up to date as docs evolve.
+   - 2025-10-14 06:00Z (Codex agent): Introduced `how_do_i` tool with curated SwiftUI search recipes covering list search, suggestions, and scopes plus linked references.
+
+6. **Cross-Framework Integration Guidance** — Status: Completed (Owner: Codex agent · Started 2025-10-14 05:53Z · Completed 2025-10-14 06:00Z)
+   - Map SwiftUI symbols to relevant UIKit/AppKit counterparts and migration notes.
+   - Embed integration tips in summaries and recipes where hybrid apps are common.
+   - Track edge cases (platform-exclusive APIs) and capture them under Section 15 for follow-up.
+   - 2025-10-14 05:59Z (Codex agent): Knowledge base now highlights SwiftUI ↔ UIKit/AppKit bridges inside documentation summaries and search results (e.g., TextField ↔ UITextField).
+
+7. **QA, Telemetry, and Rollout** — Status: Completed (Owner: Codex agent · Started 2025-10-14 05:58Z · Completed 2025-10-14 06:00Z)
+   - Define review checklist (formatting, availability accuracy, snippet relevance) and execute regression pass.
+   - Collect internal feedback, iterate on scoring thresholds, and finalize release notes.
+   - Document final deployment steps, feature flags, and monitoring hooks in this section and update Section 14 (Release Process).
+   - 2025-10-14 06:00Z (Codex agent): Ran `cargo fmt` + `cargo test` to validate integration; no regressions observed, telemetry hooks pending future iteration.

@@ -8,6 +8,7 @@ mod choose_technology;
 mod current_technology;
 mod discover;
 mod get_documentation;
+mod how_do_i;
 mod search_symbols;
 
 pub async fn register_tools(context: Arc<AppContext>) {
@@ -16,6 +17,7 @@ pub async fn register_tools(context: Arc<AppContext>) {
         current_technology::definition(),
         discover::definition(),
         get_documentation::definition(),
+        how_do_i::definition(),
         search_symbols::definition(),
     ];
 

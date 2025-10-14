@@ -102,6 +102,7 @@ dependencies = [
  "anyhow",
  "apple-docs-client",
  "futures",
+ "once_cell",
  "regex",
  "serde",
  "serde_json",

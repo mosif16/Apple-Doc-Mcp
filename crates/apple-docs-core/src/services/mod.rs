@@ -3,6 +3,8 @@ use apple_docs_client::types::{FrameworkData, ReferenceData, SymbolData, Technol
 
 use crate::state::{AppContext, FrameworkIndexEntry};
 
+pub mod knowledge;
+
 pub async fn load_active_framework(context: &AppContext) -> Result<FrameworkData> {
     let maybe_cached = context.state.framework_cache.read().await.clone();
     if let Some(cached) = maybe_cached {

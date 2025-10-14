@@ -15,6 +15,7 @@ tokio = {workspace = true}
 tracing = {workspace = true}
 regex = {workspace = true}
 futures = {workspace = true}
+once_cell = {workspace = true}
 
 [dev-dependencies]
 tempfile = {workspace = true}
