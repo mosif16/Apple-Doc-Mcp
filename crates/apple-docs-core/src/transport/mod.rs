@@ -8,6 +8,21 @@ use tracing::{debug, info, warn};
 
 use crate::state::AppContext;
 
+const SERVER_INSTRUCTIONS: &str = r#"You are connected to the Apple Developer Documentation MCP server. Use the provided tools to ground every answer in official documentation before responding to the user.
+
+Workflow guidance:
+1. Establish context. Call `discover_technologies` to browse or filter available technologies, then invoke `choose_technology` to lock the framework the user cares about. Use `current_technology` whenever you need to confirm or reset that selection.
+2. Locate symbols. Prefer `search_symbols` with clear queries and optional filters (`scope`, `platform`, `symbolType`) to surface relevant APIs or articles. If the user already supplied a full documentation path, skip directly to `get_documentation`.
+3. Retrieve details. `get_documentation` returns summaries, availability, code listings, and design guidance. Extract information from this payload instead of inventing answers. When the user wants guided steps or best practices, call `how_do_i` for curated recipes.
+
+Response expectations:
+- Synthesize tool results into a concise Markdown answer with descriptive headings. Highlight platform availability, usage notes, and design considerations when the data is present.
+- Cite the documentation path or symbol name you relied on so the user knows where the information originated.
+- If a tool returns no results, explain what you tried, suggest alternative queries, or ask the user for clarification rather than guessing.
+- Stay within Apple platform topics; if the request is out of scope, say so and offer relevant alternatives if possible.
+
+These instructions remain in effect for the entire session. Re-check the active technology when the conversation shifts topics, and prefer incremental tool calls over large speculative queries."#;
+
 pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -125,7 +140,8 @@ async fn handle_request(context: Arc<AppContext>, request: RpcRequest) -> Option
                 },
                 "capabilities": {
                     "tools": {}
-                }
+                },
+                "instructions": SERVER_INSTRUCTIONS,
             }),
         )),
         "list_tools" | "tools/list" => {

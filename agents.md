@@ -34,6 +34,7 @@
 3. **Requests:** The MCP runtime calls `CallTool`. The matching handler composes a markdown-centric text response (see `src/server/markdown.ts` helpers for consistent formatting).
 4. **Stateful interactions:** `ServerState` tracks the active technology, cached framework data, computed token index, expanded identifiers, and the last discovery result set to support guided flows.
 5. **Data retrieval:** `AppleDevDocsClient` first checks `FileCache` (reads from `docs/`). On cache miss, it hits the Apple docs endpoint through `HttpClient`, then persists the JSON for future use.
+- 2025-10-15 04:20Z (gpt-5-codex): Added richer MCP `initialize` instructions so connected models follow the intended workflow (discover → choose → search → document) and understand response expectations.
 
 ## 5. AppleDevDocsClient & Caching
 - **Instantiation:** `AppleDevDocsClient` creates an `HttpClient` plus a `FileCache` rooted at `process.cwd()/docs` (`src/apple-client.ts`).
