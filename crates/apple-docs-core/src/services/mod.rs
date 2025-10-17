@@ -99,9 +99,22 @@ fn build_framework_index(framework: &FrameworkData) -> Vec<FrameworkIndexEntry> 
 fn build_entry(id: &str, reference: &ReferenceData) -> FrameworkIndexEntry {
     let mut tokens = Vec::new();
     tokenize_into(reference.title.as_deref().unwrap_or_default(), &mut tokens);
-    if let Some(url) = &reference.url {
-        tokenize_into(url, &mut tokens);
+    tokenize_into(id, &mut tokens);
+
+    let mut normalized_reference = reference.clone();
+    if let Some(url) = &normalized_reference.url {
+        let normalized = normalize_reference_link(url);
+        if normalized.is_empty() {
+            normalized_reference.url = derive_path_from_identifier(id);
+        } else {
+            tokenize_into(&normalized, &mut tokens);
+            normalized_reference.url = Some(normalized);
+        }
+    } else if let Some(normalized) = derive_path_from_identifier(id) {
+        tokenize_into(&normalized, &mut tokens);
+        normalized_reference.url = Some(normalized);
     }
+
     if let Some(abstract_text) = &reference.r#abstract {
         let text: String = abstract_text
             .iter()
@@ -113,7 +126,7 @@ fn build_entry(id: &str, reference: &ReferenceData) -> FrameworkIndexEntry {
     FrameworkIndexEntry {
         id: id.to_string(),
         tokens,
-        reference: reference.clone(),
+        reference: normalized_reference,
     }
 }
 
@@ -123,6 +136,10 @@ fn build_symbol_entry(identifier: &str, symbol: &SymbolData) -> FrameworkIndexEn
         tokenize_into(title, &mut tokens);
     }
     tokenize_into(identifier, &mut tokens);
+    let normalized_path = normalize_reference_link(identifier);
+    if !normalized_path.is_empty() {
+        tokenize_into(&normalized_path, &mut tokens);
+    }
     FrameworkIndexEntry {
         id: identifier.to_string(),
         tokens,
@@ -131,13 +148,11 @@ fn build_symbol_entry(identifier: &str, symbol: &SymbolData) -> FrameworkIndexEn
             kind: symbol.metadata.symbol_kind.clone(),
             r#abstract: Some(symbol.r#abstract.clone()),
             platforms: Some(symbol.metadata.platforms.clone()),
-            url: Some(format!(
-                "/{}",
-                identifier
-                    .trim_start_matches("doc://com.apple.documentation/")
-                    .trim_start_matches("doc://com.apple.SwiftUI/")
-                    .trim_start_matches('/')
-            )),
+            url: if normalized_path.is_empty() {
+                None
+            } else {
+                Some(normalized_path)
+            },
         },
     }
 }
@@ -151,6 +166,36 @@ fn tokenize_into(value: &str, tokens: &mut Vec<String>) {
         if !tokens.contains(&lower) {
             tokens.push(lower);
         }
+    }
+}
+
+fn normalize_reference_link(input: &str) -> String {
+    let trimmed = input.trim();
+    let without_doc = trimmed
+        .strip_prefix("doc://com.apple.documentation/")
+        .or_else(|| trimmed.strip_prefix("doc://com.apple.SwiftUI/"))
+        .or_else(|| trimmed.strip_prefix("doc://com.apple.HIG/"))
+        .unwrap_or(trimmed);
+    let without_leading_slash = without_doc.trim_start_matches('/');
+
+    if without_leading_slash.starts_with("design/")
+        || without_leading_slash.starts_with("human-interface-guidelines/")
+        || without_leading_slash.starts_with("documentation/")
+    {
+        without_leading_slash.to_string()
+    } else if without_leading_slash.is_empty() {
+        String::new()
+    } else {
+        format!("documentation/{}", without_leading_slash)
+    }
+}
+
+fn derive_path_from_identifier(identifier: &str) -> Option<String> {
+    let normalized = normalize_reference_link(identifier);
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
     }
 }
 

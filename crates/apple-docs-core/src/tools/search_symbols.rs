@@ -1,4 +1,8 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Instant,
+};
 
 use anyhow::{bail, Context, Result};
 use apple_docs_client::types::{
@@ -16,6 +20,10 @@ use crate::{
     state::{AppContext, FrameworkIndexEntry, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
 };
+use futures::future;
+use tracing::{debug, warn};
+
+const MAX_DESIGN_GUIDANCE_LOOKUPS: usize = 3;
 
 #[derive(Debug, Deserialize)]
 struct Args {
@@ -135,6 +143,13 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
         String::new(),
     ];
 
+    let design_sections: HashMap<String, Vec<design_guidance::DesignSection>> =
+        if deduped_matches.is_empty() {
+            HashMap::new()
+        } else {
+            gather_design_guidance(&context, &deduped_matches, MAX_DESIGN_GUIDANCE_LOOKUPS).await
+        };
+
     if deduped_matches.is_empty() {
         lines.push("No symbols matched those terms within this technology.".to_string());
         lines.push("Try broader keywords (e.g. \"tab\"), explore synonyms, or run `discover_technologies` again.".to_string());
@@ -158,7 +173,7 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
             }
         }
     } else {
-        for entry in deduped_matches {
+        for entry in &deduped_matches {
             let title = entry
                 .reference
                 .title
@@ -181,6 +196,7 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
                 .as_ref()
                 .map(|platforms| platforms.as_slice());
             let (platform_label, availability) = classify_platforms(&path, platform_slice);
+            let key = dedup_key(&path, &title);
             lines.push(format!(
                 "• **{}** — {}",
                 title,
@@ -218,9 +234,9 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
                     lines.push(format!("  Bridge: {}", summary));
                 }
             }
-            if let Ok(sections) = design_guidance::guidance_for(&context, &title, &path).await {
+            if let Some(sections) = design_sections.get(&key) {
                 let mut highlights = Vec::new();
-                for section in &sections {
+                for section in sections {
                     if let Some(bullet) = section.bullets.first() {
                         highlights.push(format!("{}: {}", bullet.category, bullet.text));
                     }
@@ -319,6 +335,19 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         String::new(),
     ];
 
+    let design_targets: Vec<FrameworkIndexEntry> = matches
+        .iter()
+        .take(MAX_DESIGN_GUIDANCE_LOOKUPS)
+        .map(|item| item.entry.clone())
+        .collect();
+
+    let design_sections: HashMap<String, Vec<design_guidance::DesignSection>> =
+        if design_targets.is_empty() {
+            HashMap::new()
+        } else {
+            gather_design_guidance(&context, &design_targets, MAX_DESIGN_GUIDANCE_LOOKUPS).await
+        };
+
     if matches.is_empty() {
         lines.push("No symbols matched those terms across Apple documentation.".to_string());
         lines.push("Try alternative keywords or switch back to a specific technology.".to_string());
@@ -352,6 +381,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
             .as_ref()
             .map(|platforms| platforms.as_slice());
         let (platform_label, availability) = classify_platforms(&path, platform_slice);
+        let key = dedup_key(&path, &title);
 
         lines.push(format!(
             "• **{}** — {}",
@@ -392,9 +422,9 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
                 lines.push(format!("  Bridge: {}", summary));
             }
         }
-        if let Ok(sections) = design_guidance::guidance_for(&context, &title, &path).await {
+        if let Some(sections) = design_sections.get(&key) {
             let mut highlights = Vec::new();
-            for section in &sections {
+            for section in sections {
                 if let Some(bullet) = section.bullets.first() {
                     highlights.push(format!("{}: {}", bullet.category, bullet.text));
                 }
@@ -508,6 +538,69 @@ struct GlobalMatch {
     entry: FrameworkIndexEntry,
     technology_title: String,
     technology_identifier: String,
+}
+
+async fn gather_design_guidance(
+    context: &Arc<AppContext>,
+    entries: &[FrameworkIndexEntry],
+    limit: usize,
+) -> HashMap<String, Vec<design_guidance::DesignSection>> {
+    let capped = limit.min(entries.len());
+    if capped == 0 {
+        return HashMap::new();
+    }
+
+    let mut tasks = Vec::with_capacity(capped);
+    for entry in entries.iter().take(capped) {
+        let path = match entry.reference.url.clone() {
+            Some(value) if value != "(unknown path)" => value,
+            _ => continue,
+        };
+        let title = entry
+            .reference
+            .title
+            .clone()
+            .unwrap_or_else(|| "Symbol".to_string());
+        let key = dedup_key(&path, &title);
+        let context = Arc::clone(context);
+
+        tasks.push(async move {
+            let started = Instant::now();
+            let result = design_guidance::guidance_for(context.as_ref(), &title, &path).await;
+            match &result {
+                Ok(sections) => {
+                    debug!(
+                        target: "search_symbols.design_guidance",
+                        path = %path,
+                        ms = started.elapsed().as_millis(),
+                        entries = sections.len(),
+                        "loaded design guidance"
+                    );
+                }
+                Err(error) => {
+                    warn!(
+                        target: "search_symbols.design_guidance",
+                        path = %path,
+                        ms = started.elapsed().as_millis(),
+                        "failed to load design guidance: {error:#}"
+                    );
+                }
+            }
+            (key, result)
+        });
+    }
+
+    let mut map = HashMap::new();
+    for (key, result) in future::join_all(tasks).await {
+        match result {
+            Ok(sections) if !sections.is_empty() => {
+                map.insert(key, sections);
+            }
+            _ => {}
+        }
+    }
+
+    map
 }
 
 fn classify_platforms(path: &str, platforms: Option<&[PlatformInfo]>) -> (String, Option<String>) {

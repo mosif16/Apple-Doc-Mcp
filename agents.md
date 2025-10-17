@@ -48,9 +48,11 @@
 - **Active context:** `ServerState` keeps the currently selected `Technology` plus its `FrameworkData`. Clearing the technology also clears the per-framework index and expanded identifier set.
 - **Global cache:** `global_indexes` memoizes `FrameworkIndexEntry` vectors per technology so `search_symbols` can scan every framework when callers set `scope: "global"`. Entries hydrate lazily from cached `FrameworkData`.
 - **Index building:** `ensureFrameworkIndex` tokenizes symbol titles, URLs, and abstracts into a searchable token map (see `crates/apple-docs-core/src/services/mod.rs`). Tokens are lowercased and split on whitespace, punctuation, and `/._-`.
+- **Identifier coverage:** Reference identifiers are now normalized into documentation paths during indexing so lookups like `wkwebextension` succeed even when upstream reference URLs are missing.
 - **Expansion:** When initial matches are sparse, handlers call `expandSymbolReferences` to fetch nested documentation entries based on identifier batches (default 50 per batch) and merge them into the index.
 - **Scoring:** `collectMatches` ranks entries by term overlap (exact token = +3, substring match = +1) and respects optional filters (`platform`, `symbolType`).
 - **Fallback strategy:** If direct matches fail, `performFallbackSearches` runs hierarchical search, regex search, then finally a simple client-side scan (`src/server/handlers/search/strategies/*`). Each result is annotated with `foundVia` to describe the fallback path.
+- **Design overlay fetches:** `search_symbols` now caps Human Interface Guidelines enrichment at the first three matches per query. `gather_design_guidance` fetches those sections concurrently, logs timings under the `search_symbols.design_guidance` tracing target, and skips the rest to keep fuzzy search latency low. Integration test `search_results_limit_design_guidance_fetches` guards the cap—bump both the test and `MAX_DESIGN_GUIDANCE_LOOKUPS` together if you tune the limit.
 - **Last discovery snapshot:** The discover handler stores the visible page in `state` so future UX additions (e.g., follow-up questions) can reuse the context.
 
 ## 7. MCP Tools Reference

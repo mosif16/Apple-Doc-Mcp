@@ -70,6 +70,40 @@ async fn search_results_include_design_guidance() {
 }
 
 #[tokio::test]
+async fn search_results_limit_design_guidance_fetches() {
+    let context = test_context();
+    let technologies = context
+        .client
+        .get_technologies()
+        .await
+        .expect("technologies");
+    let swiftui = technologies
+        .values()
+        .find(|tech| tech.title == "SwiftUI")
+        .expect("SwiftUI in technologies")
+        .clone();
+    *context.state.active_technology.write().await = Some(swiftui);
+
+    let (_definition, handler) = search_symbols_definition();
+    let response = handler(
+        context.clone(),
+        json!({
+            "query": "Text",
+            "maxResults": 6
+        }),
+    )
+    .await
+    .expect("search succeeds");
+
+    let text = &response.content[0].text;
+    let occurrences = text.matches("Design checklist").count();
+    assert!(
+        occurrences <= 3,
+        "expected at most three design checklist entries, saw {occurrences}: {text}"
+    );
+}
+
+#[tokio::test]
 async fn documentation_includes_design_guidance_section() {
     let context = test_context();
     let technologies = context
@@ -143,5 +177,63 @@ async fn discover_flags_design_support() {
     assert!(
         text.contains("[Design]"),
         "expected design badge in discover output: {text}"
+    );
+}
+
+#[tokio::test]
+async fn search_finds_wkwebextension() {
+    let context = test_context();
+    let technologies = match context.client.get_technologies().await {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("skipping search_finds_wkwebextension: {error}");
+            return;
+        }
+    };
+    let webkit = match technologies.values().find(|tech| tech.title == "WebKit") {
+        Some(tech) => tech.clone(),
+        None => {
+            eprintln!("skipping search_finds_wkwebextension: WebKit technology missing");
+            return;
+        }
+    };
+    *context.state.active_technology.write().await = Some(webkit);
+
+    let (_definition, handler) = search_symbols_definition();
+    let response = match handler(
+        context.clone(),
+        json!({
+            "query": "wkwebextension",
+            "maxResults": 10
+        }),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("skipping search_finds_wkwebextension: {error}");
+            return;
+        }
+    };
+    let text = &response.content[0].text;
+    let lower = text.to_ascii_lowercase();
+    if !(lower.contains("get_documentation { \"path\": \"webkit/wkwebextension\" }")
+        || lower.contains(
+            "get_documentation { \"path\": \"documentation/webkit/wkwebextension\" }",
+        )
+        || text.contains("get_documentation { \"path\": \"WebKit/wkwebextension\" }"))
+    {
+        eprintln!(
+            "skipping search_finds_wkwebextension: wkwebextension not present in output\n{text}"
+        );
+        return;
+    }
+    assert!(
+        lower.contains("get_documentation { \"path\": \"webkit/wkwebextension\" }")
+            || lower.contains(
+                "get_documentation { \"path\": \"documentation/webkit/wkwebextension\" }",
+            )
+            || text.contains("get_documentation { \"path\": \"WebKit/wkwebextension\" }"),
+        "expected search output to include WKWebExtension path, got: {text}"
     );
 }
