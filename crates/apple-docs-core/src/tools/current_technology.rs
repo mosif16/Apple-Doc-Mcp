@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use serde_json::json;
 
 use crate::{
     markdown,
-    services::design_guidance,
+    services::{design_guidance, knowledge},
     state::{AppContext, ToolDefinition, ToolHandler, ToolResponse},
-    tools::{simple_text, text_response, wrap_handler},
+    tools::{text_response, wrap_handler},
 };
 
 pub fn definition() -> (ToolDefinition, ToolHandler) {
@@ -34,7 +35,10 @@ async fn handle(context: Arc<AppContext>) -> Result<ToolResponse> {
             "• `choose_technology \"Another Framework\"` to switch".to_string(),
         ];
 
+        let mut primer_count = 0usize;
+        let recipes = knowledge::recipes_for(&active.title);
         if let Ok(sections) = design_guidance::primers_for_technology(&context, &active).await {
+            primer_count = sections.len();
             if !sections.is_empty() {
                 lines.push(String::new());
                 lines.push(markdown::header(2, "Design primers"));
@@ -54,10 +58,68 @@ async fn handle(context: Arc<AppContext>) -> Result<ToolResponse> {
             }
         }
 
-        Ok(text_response(lines))
+        if !recipes.is_empty() {
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Curated recipes"));
+            for recipe in recipes.iter().take(3) {
+                let mut fallback_keyword = None;
+                let task_hint = recipe.keywords.first().copied().unwrap_or_else(|| {
+                    fallback_keyword = Some(recipe.title.to_lowercase());
+                    fallback_keyword.as_ref().unwrap().as_str()
+                });
+                lines.push(format!(
+                    "• **{}** — {} (`how_do_i {{ \"task\": \"{}\" }}`)",
+                    recipe.title, recipe.summary, task_hint
+                ));
+            }
+            if recipes.len() > 3 {
+                lines.push(format!(
+                    "• …and {} more recipes available via `how_do_i`",
+                    recipes.len() - 3
+                ));
+            }
+        }
+
+        if let Some(last_query) =
+            context
+                .state
+                .recent_queries
+                .lock()
+                .await
+                .iter()
+                .rev()
+                .find(|entry| {
+                    entry
+                        .technology
+                        .as_deref()
+                        .map(|tech| tech.eq_ignore_ascii_case(&active.title))
+                        .unwrap_or(false)
+                })
+        {
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Recent search"));
+            lines.push(format!(
+                "• `search_symbols {{ \"query\": \"{}\" }}` — {} matches",
+                last_query.query, last_query.matches
+            ));
+        }
+
+        let metadata = json!({
+            "selected": true,
+            "identifier": active.identifier,
+            "name": active.title,
+            "designPrimerCount": primer_count,
+            "recipeCount": recipes.len(),
+        });
+
+        Ok(text_response(lines).with_metadata(metadata))
     } else {
-        Ok(simple_text(
-            "🚦 Technology Not Selected\nUse `discover_technologies` then `choose_technology` to get started.",
-        ))
+        let lines = [
+            "🚦 Technology Not Selected".to_string(),
+            "Use `discover_technologies` then `choose_technology` to get started.".to_string(),
+        ];
+        Ok(text_response(lines).with_metadata(json!({
+            "selected": false
+        })))
     }
 }

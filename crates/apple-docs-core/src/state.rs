@@ -9,6 +9,8 @@ use apple_docs_client::{
 };
 use futures::future::BoxFuture;
 use serde::Serialize;
+use serde_json::Value;
+use time::OffsetDateTime;
 use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone)]
@@ -26,6 +28,20 @@ impl AppContext {
             tools: Arc::new(ToolRegistry::default()),
         }
     }
+
+    pub async fn record_telemetry(&self, entry: TelemetryEntry) {
+        let mut guard = self.state.telemetry_log.lock().await;
+        guard.push(entry);
+        const MAX_ENTRIES: usize = 200;
+        if guard.len() > MAX_ENTRIES {
+            let overflow = guard.len() - MAX_ENTRIES;
+            guard.drain(0..overflow);
+        }
+    }
+
+    pub async fn telemetry_snapshot(&self) -> Vec<TelemetryEntry> {
+        self.state.telemetry_log.lock().await.clone()
+    }
 }
 
 #[derive(Default)]
@@ -37,6 +53,8 @@ pub struct ServerState {
     pub expanded_identifiers: Mutex<HashSet<String>>,
     pub last_symbol: RwLock<Option<SymbolData>>,
     pub last_discovery: RwLock<Option<DiscoverySnapshot>>,
+    pub telemetry_log: Mutex<Vec<TelemetryEntry>>,
+    pub recent_queries: Mutex<Vec<SearchQueryLog>>,
 }
 
 #[derive(Clone)]
@@ -53,6 +71,29 @@ pub struct DiscoverySnapshot {
 }
 
 #[derive(Clone, Serialize)]
+pub struct SearchQueryLog {
+    pub technology: Option<String>,
+    pub scope: String,
+    pub query: String,
+    pub matches: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<OffsetDateTime>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct TelemetryEntry {
+    pub tool: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub timestamp: OffsetDateTime,
+    pub latency_ms: u64,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -63,6 +104,8 @@ pub struct ToolDefinition {
 #[derive(Clone, Serialize)]
 pub struct ToolResponse {
     pub content: Vec<ToolContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Value>,
 }
 
 #[derive(Clone, Serialize)]
@@ -104,5 +147,12 @@ impl ToolRegistry {
             .values()
             .map(|entry| entry.definition.clone())
             .collect()
+    }
+}
+
+impl ToolResponse {
+    pub fn with_metadata(mut self, metadata: Value) -> Self {
+        self.metadata = Some(metadata);
+        self
     }
 }

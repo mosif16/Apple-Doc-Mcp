@@ -3,10 +3,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use apple_docs_client::types::{extract_text, Technology};
 use serde::Deserialize;
+use serde_json::json;
 
 use crate::{
     markdown,
-    services::design_guidance,
+    services::{design_guidance, knowledge},
     state::{AppContext, DiscoverySnapshot, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
 };
@@ -106,6 +107,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             .to_ascii_lowercase()
             .starts_with("/design/human-interface-guidelines");
         let has_primers = design_guidance::has_primer_mapping(framework);
+        let recipe_count = knowledge::recipes_for(&framework.title).len();
         let mut title_line = format!("### {}", framework.title);
         if is_design || has_primers {
             title_line.push_str(" · [Design]");
@@ -126,6 +128,12 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             );
         }
         lines.push(format!("   • **Identifier:** {}", framework.identifier));
+        if recipe_count > 0 {
+            lines.push(format!(
+                "   • Recipes available: {} (`how_do_i {{ \"task\": \"...\" }}`)",
+                recipe_count
+            ));
+        }
         lines.push(format!(
             "   • **Select:** `choose_technology \"{}\"`",
             framework.title
@@ -140,12 +148,31 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     ));
     lines.push(String::new());
     lines.push("## Next Step".to_string());
-    lines.push(
-        "Call `choose_technology` with the framework title or identifier to make it active."
-            .to_string(),
-    );
+    let design_badged = page_items
+        .iter()
+        .filter(|framework| {
+            framework
+                .url
+                .to_ascii_lowercase()
+                .starts_with("/design/human-interface-guidelines")
+                || design_guidance::has_primer_mapping(framework)
+        })
+        .count();
+    let recipes_on_page: usize = page_items
+        .iter()
+        .map(|framework| knowledge::recipes_for(&framework.title).len())
+        .sum();
+    let metadata = json!({
+        "totalMatches": frameworks.len(),
+        "page": current_page,
+        "pageSize": page_size,
+        "pageItems": page_items.len(),
+        "designFlaggedOnPage": design_badged,
+        "recipesOnPage": recipes_on_page,
+        "query": args.query,
+    });
 
-    Ok(text_response(lines))
+    Ok(text_response(lines).with_metadata(metadata))
 }
 
 fn build_pagination(query: Option<&str>, current: usize, total: usize) -> Vec<String> {

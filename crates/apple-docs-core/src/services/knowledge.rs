@@ -8,6 +8,7 @@ pub struct IntegrationLink {
     pub note: &'static str,
 }
 
+#[derive(Clone)]
 pub struct RelatedItem {
     pub title: &'static str,
     pub path: &'static str,
@@ -453,6 +454,13 @@ pub fn find_recipe(technology: &str, query: &str) -> Option<&'static RecipeDefin
     RECIPES
         .iter()
         .find(|recipe| recipe.matches(query, technology))
+}
+
+pub fn recipes_for(technology: &str) -> Vec<&'static RecipeDefinition> {
+    RECIPES
+        .iter()
+        .filter(|recipe| recipe.technology.eq_ignore_ascii_case(technology))
+        .collect()
 }
 
 pub fn snippet(entry: &KnowledgeEntry) -> Option<Snippet> {

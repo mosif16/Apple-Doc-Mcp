@@ -3,9 +3,11 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use apple_docs_client::types::Technology;
 use serde::Deserialize;
+use serde_json::json;
 
 use crate::{
     markdown,
+    services::design_guidance,
     state::{AppContext, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
 };
@@ -57,13 +59,22 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         .collect();
 
     let chosen = resolve_candidate(&candidates, &args);
+    let input_identifier = args.identifier.clone();
+    let input_name = args.name.clone();
 
     let technology = match chosen {
         Some(tech) => tech,
         None => {
-            let message = build_not_found(&candidates, &args);
+            let not_found = build_not_found(&candidates, &args);
             context.state.active_technology.write().await.take();
-            return Ok(text_response(message));
+            let metadata = json!({
+                "resolved": false,
+                "inputIdentifier": input_identifier,
+                "inputName": input_name,
+                "searchTerm": not_found.search_term,
+                "suggestions": not_found.suggestion_count,
+            });
+            return Ok(text_response(not_found.lines).with_metadata(metadata));
         }
     };
 
@@ -72,6 +83,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     context.state.framework_index.write().await.take();
     context.state.expanded_identifiers.lock().await.clear();
 
+    let has_design_mapping = design_guidance::has_primer_mapping(&technology);
     let lines = vec![
         markdown::header(1, "✅ Technology Selected"),
         String::new(),
@@ -85,7 +97,14 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         "• `discover_technologies` — pick another framework".to_string(),
     ];
 
-    Ok(text_response(lines))
+    let metadata = json!({
+        "resolved": true,
+        "identifier": technology.identifier,
+        "name": technology.title,
+        "designPrimersAvailable": has_design_mapping,
+    });
+
+    Ok(text_response(lines).with_metadata(metadata))
 }
 
 fn resolve_candidate(candidates: &[Technology], args: &Args) -> Option<Technology> {
@@ -140,15 +159,22 @@ fn fuzzy_score(candidate: &str, target: &str) -> u32 {
     }
 }
 
-fn build_not_found(candidates: &[Technology], args: &Args) -> Vec<String> {
+struct NotFoundDetails {
+    lines: Vec<String>,
+    search_term: String,
+    suggestion_count: usize,
+}
+
+fn build_not_found(candidates: &[Technology], args: &Args) -> NotFoundDetails {
     let search_term = args
         .name
         .as_ref()
         .or(args.identifier.as_ref())
-        .map(|s| s.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
         .unwrap_or("unknown");
 
-    let suggestions = candidates
+    let suggestions_list: Vec<String> = candidates
         .iter()
         .filter(|tech| {
             tech.title
@@ -158,6 +184,7 @@ fn build_not_found(candidates: &[Technology], args: &Args) -> Vec<String> {
         .take(5)
         .map(|tech| format!("• {} — `choose_technology \"{}\"`", tech.title, tech.title))
         .collect::<Vec<_>>();
+    let suggestion_count = suggestions_list.len();
 
     let mut lines = vec![
         markdown::header(1, "❌ Technology Not Found"),
@@ -166,14 +193,18 @@ fn build_not_found(candidates: &[Technology], args: &Args) -> Vec<String> {
         markdown::header(2, "Suggestions"),
     ];
 
-    if suggestions.is_empty() {
+    if suggestions_list.is_empty() {
         lines.push(
             "• Use `discover_technologies { \"query\": \"keyword\" }` to find candidates"
                 .to_string(),
         );
     } else {
-        lines.extend(suggestions);
+        lines.extend(suggestions_list.iter().cloned());
     }
 
-    lines
+    NotFoundDetails {
+        lines,
+        search_term: search_term.to_string(),
+        suggestion_count,
+    }
 }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,8 @@ use serde_json::json;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, info, warn};
 
-use crate::state::AppContext;
+use crate::state::{AppContext, TelemetryEntry};
+use time::OffsetDateTime;
 
 const SERVER_INSTRUCTIONS: &str = r#"You are connected to the Apple Developer Documentation MCP server. Use the provided tools to ground every answer in official documentation before responding to the user.
 
@@ -176,16 +177,58 @@ async fn handle_request(context: Arc<AppContext>, request: RpcRequest) -> Option
                     match context.tools.get(&name).await {
                         Some(entry) => {
                             let handler = entry.handler.clone();
+                            let started = Instant::now();
                             match handler(context.clone(), arguments).await {
-                                Ok(response) => Some(RpcResponse::result(
-                                    Some(id_value.clone()),
-                                    serde_json::to_value(response).unwrap(),
-                                )),
-                                Err(error) => Some(RpcResponse::error(
-                                    Some(id_value.clone()),
-                                    -32000,
-                                    error.to_string(),
-                                )),
+                                Ok(response) => {
+                                    let latency_ms = started.elapsed().as_millis() as u64;
+                                    let metadata = response.metadata.clone();
+                                    let entry = TelemetryEntry {
+                                        tool: name.clone(),
+                                        timestamp: OffsetDateTime::now_utc(),
+                                        latency_ms,
+                                        success: true,
+                                        metadata: metadata.clone(),
+                                        error: None,
+                                    };
+                                    context.record_telemetry(entry).await;
+                                    info!(
+                                        target: "apple_docs_transport",
+                                        tool = %name,
+                                        latency_ms,
+                                        success = true,
+                                        metadata = metadata.as_ref().map(|value| value.to_string()).unwrap_or_else(|| "null".to_string()),
+                                        "tool completed"
+                                    );
+                                    Some(RpcResponse::result(
+                                        Some(id_value.clone()),
+                                        serde_json::to_value(response).unwrap(),
+                                    ))
+                                }
+                                Err(error) => {
+                                    let latency_ms = started.elapsed().as_millis() as u64;
+                                    let message = error.to_string();
+                                    let entry = TelemetryEntry {
+                                        tool: name.clone(),
+                                        timestamp: OffsetDateTime::now_utc(),
+                                        latency_ms,
+                                        success: false,
+                                        metadata: None,
+                                        error: Some(message.clone()),
+                                    };
+                                    context.record_telemetry(entry).await;
+                                    warn!(
+                                        target: "apple_docs_transport",
+                                        tool = %name,
+                                        latency_ms,
+                                        error = %message,
+                                        "tool failed"
+                                    );
+                                    Some(RpcResponse::error(
+                                        Some(id_value.clone()),
+                                        -32000,
+                                        message,
+                                    ))
+                                }
                             }
                         }
                         None => Some(RpcResponse::error(

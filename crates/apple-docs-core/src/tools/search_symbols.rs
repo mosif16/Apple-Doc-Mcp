@@ -8,8 +8,10 @@ use anyhow::{bail, Context, Result};
 use apple_docs_client::types::{
     extract_text, format_platforms, FrameworkData, PlatformInfo, ReferenceData, Technology,
 };
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
+use serde_json::json;
 
 use crate::{
     markdown,
@@ -17,10 +19,13 @@ use crate::{
         design_guidance, ensure_framework_index, ensure_global_framework_index, expand_identifiers,
         knowledge, load_active_framework,
     },
-    state::{AppContext, FrameworkIndexEntry, ToolDefinition, ToolHandler, ToolResponse},
+    state::{
+        AppContext, FrameworkIndexEntry, SearchQueryLog, ToolDefinition, ToolHandler, ToolResponse,
+    },
     tools::{parse_args, text_response, wrap_handler},
 };
 use futures::future;
+use time::OffsetDateTime;
 use tracing::{debug, warn};
 
 const MAX_DESIGN_GUIDANCE_LOOKUPS: usize = 3;
@@ -35,6 +40,51 @@ struct Args {
     symbol_type: Option<String>,
     scope: Option<String>,
 }
+
+#[derive(Clone)]
+struct QueryConfig {
+    raw: String,
+    compact: String,
+    terms: Vec<String>,
+    synonyms: HashMap<String, Vec<String>>,
+}
+
+impl QueryConfig {
+    fn term_count(&self) -> usize {
+        self.terms.len()
+    }
+
+    fn synonyms_applied(&self) -> bool {
+        self.synonyms.values().any(|values| !values.is_empty())
+    }
+}
+
+#[derive(Clone)]
+struct RankedEntry {
+    score: i32,
+    entry: FrameworkIndexEntry,
+    matched_terms: usize,
+    synonym_hits: usize,
+}
+
+static QUERY_SYNONYMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
+    HashMap::from([
+        ("list", vec!["table", "collection", "outline"]),
+        ("table", vec!["list", "grid"]),
+        ("grid", vec!["collection", "layout"]),
+        ("text", vec!["label", "string"]),
+        ("textfield", vec!["input", "formfield", "textinput"]),
+        ("field", vec!["input", "textfield"]),
+        ("search", vec!["find", "lookup", "query"]),
+        ("toolbar", vec!["navigationbar", "actions", "bar"]),
+        ("tab", vec!["segmented", "page"]),
+        ("navigation", vec!["routing", "stack"]),
+        ("button", vec!["control", "action"]),
+        ("toggle", vec!["switch"]),
+        ("alert", vec!["dialog", "notification"]),
+        ("link", vec!["url", "address"]),
+    ])
+});
 
 pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
@@ -87,8 +137,10 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
 
     let mut index = ensure_framework_index(&context).await?;
     let max_results = args.max_results.unwrap_or(20).max(1);
+    let query = prepare_query(&args.query);
 
-    let mut ranked_matches = collect_matches(&index, &args);
+    let mut ranked_matches =
+        collect_matches(&index, &args, &query, Some(technology.title.as_str()));
     if ranked_matches.is_empty() {
         let framework = load_active_framework(&context).await?;
         let identifiers: Vec<String> = framework
@@ -99,27 +151,30 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
             .collect();
         if !identifiers.is_empty() {
             index = expand_identifiers(&context, &identifiers).await?;
-            ranked_matches = collect_matches(&index, &args);
+            ranked_matches =
+                collect_matches(&index, &args, &query, Some(technology.title.as_str()));
         }
     }
 
-    let mut deduped_matches = Vec::new();
+    let mut deduped_matches: Vec<RankedEntry> = Vec::new();
     if !ranked_matches.is_empty() {
         let mut seen_paths = HashSet::new();
-        for (_, entry) in ranked_matches {
-            let path = entry
+        for ranked in ranked_matches {
+            let path = ranked
+                .entry
                 .reference
                 .url
                 .clone()
                 .unwrap_or_else(|| "(unknown path)".to_string());
-            let title = entry
+            let title = ranked
+                .entry
                 .reference
                 .title
                 .clone()
                 .unwrap_or_else(|| "Symbol".to_string());
             let key = dedup_key(&path, &title);
             if seen_paths.insert(key) {
-                deduped_matches.push(entry);
+                deduped_matches.push(ranked);
             }
             if deduped_matches.len() >= max_results {
                 break;
@@ -143,12 +198,23 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
         String::new(),
     ];
 
+    let design_targets: Vec<FrameworkIndexEntry> = deduped_matches
+        .iter()
+        .take(MAX_DESIGN_GUIDANCE_LOOKUPS)
+        .map(|ranked| ranked.entry.clone())
+        .collect();
     let design_sections: HashMap<String, Vec<design_guidance::DesignSection>> =
-        if deduped_matches.is_empty() {
+        if design_targets.is_empty() {
             HashMap::new()
         } else {
-            gather_design_guidance(&context, &deduped_matches, MAX_DESIGN_GUIDANCE_LOOKUPS).await
+            gather_design_guidance(&context, &design_targets, MAX_DESIGN_GUIDANCE_LOOKUPS).await
         };
+    let mut knowledge_hits = 0usize;
+    let mut design_hits = 0usize;
+    let mut synonym_match_total = 0usize;
+    let mut full_term_match_count = 0usize;
+    let mut total_score = 0i32;
+    let term_count = query.term_count();
 
     if deduped_matches.is_empty() {
         lines.push("No symbols matched those terms within this technology.".to_string());
@@ -157,15 +223,15 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
             lines.push(String::new());
             lines.push(markdown::header(2, "Fallback suggestions"));
             lines.push(String::new());
-            for result in fallback {
+            for result in &fallback {
                 lines.push(format!(
                     "• **{}** — {}",
-                    result.title,
+                    result.title.as_str(),
                     trim_with_ellipsis(&result.description, 120)
                 ));
                 lines.push(format!(
                     "  `get_documentation {{ \"path\": \"{}\" }}`",
-                    result.path
+                    result.path.as_str()
                 ));
                 lines.push(format!("  Platforms: {}", result.platforms));
                 lines.push(format!("  Found via: {}", result.found_via));
@@ -173,7 +239,14 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
             }
         }
     } else {
-        for entry in &deduped_matches {
+        for ranked in &deduped_matches {
+            total_score += ranked.score;
+            synonym_match_total += ranked.synonym_hits;
+            if term_count > 0 && ranked.matched_terms >= term_count {
+                full_term_match_count += 1;
+            }
+
+            let entry = &ranked.entry;
             let title = entry
                 .reference
                 .title
@@ -233,6 +306,7 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
                         .join(" · ");
                     lines.push(format!("  Bridge: {}", summary));
                 }
+                knowledge_hits += 1;
             }
             if let Some(sections) = design_sections.get(&key) {
                 let mut highlights = Vec::new();
@@ -255,16 +329,45 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
                         section.slug
                     ));
                 }
+                if !sections.is_empty() {
+                    design_hits += 1;
+                }
             }
             lines.push(String::new());
         }
     }
 
-    Ok(text_response(lines))
+    let metadata = json!({
+        "scope": "technology",
+        "query": args.query,
+        "matchCount": match_count,
+        "maxResults": max_results,
+        "matchDensity": if max_results == 0 { 0.0 } else { match_count as f64 / max_results as f64 },
+        "fallbackCount": fallback.len(),
+        "designAnnotated": design_hits,
+        "knowledgeAnnotated": knowledge_hits,
+        "designSectionsFetched": design_sections.len(),
+        "synonymsApplied": query.synonyms_applied(),
+        "synonymMatches": synonym_match_total,
+        "fullMatchCount": full_term_match_count,
+        "avgScore": if match_count == 0 { 0.0 } else { total_score as f64 / match_count as f64 },
+        "queryTerms": term_count,
+    });
+    log_search_query(
+        &context,
+        Some(technology.title.clone()),
+        "technology",
+        &query.raw,
+        match_count,
+    )
+    .await;
+
+    Ok(text_response(lines).with_metadata(metadata))
 }
 
 async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let max_results = args.max_results.unwrap_or(20).max(1);
+    let query = prepare_query(&args.query);
 
     let technologies = context.client.get_technologies().await?;
     let frameworks: Vec<Technology> = technologies
@@ -278,15 +381,19 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         let mut matches = collect_matches(
             &ensure_global_framework_index(&context, technology).await?,
             &args,
+            &query,
+            Some(technology.title.as_str()),
         );
         matches.truncate(max_results);
 
-        for (score, entry) in matches {
+        for ranked in matches {
             aggregate.push(GlobalMatch {
-                score,
-                entry,
+                score: ranked.score,
+                entry: ranked.entry,
                 technology_title: technology.title.clone(),
                 technology_identifier: technology.identifier.clone(),
+                matched_terms: ranked.matched_terms,
+                synonym_hits: ranked.synonym_hits,
             });
         }
     }
@@ -347,14 +454,41 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         } else {
             gather_design_guidance(&context, &design_targets, MAX_DESIGN_GUIDANCE_LOOKUPS).await
         };
+    let mut knowledge_hits = 0usize;
+    let mut design_hits = 0usize;
+    let mut synonym_match_total = 0usize;
+    let mut full_term_match_count = 0usize;
+    let mut total_score = 0i32;
+    let term_count = query.term_count();
 
     if matches.is_empty() {
         lines.push("No symbols matched those terms across Apple documentation.".to_string());
         lines.push("Try alternative keywords or switch back to a specific technology.".to_string());
-        return Ok(text_response(lines));
+        let metadata = json!({
+            "scope": "global",
+            "query": args.query,
+            "matchCount": 0,
+            "maxResults": max_results,
+            "matchDensity": 0.0,
+            "designAnnotated": 0,
+            "knowledgeAnnotated": 0,
+            "technologiesScanned": frameworks.len(),
+            "synonymsApplied": query.synonyms_applied(),
+            "synonymMatches": 0,
+            "fullMatchCount": 0,
+            "avgScore": 0.0,
+            "queryTerms": term_count,
+        });
+        return Ok(text_response(lines).with_metadata(metadata));
     }
 
-    for matched in matches {
+    for matched in &matches {
+        total_score += matched.score;
+        synonym_match_total += matched.synonym_hits;
+        if term_count > 0 && matched.matched_terms >= term_count {
+            full_term_match_count += 1;
+        }
+
         let title = matched
             .entry
             .reference
@@ -421,6 +555,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
                     .join(" · ");
                 lines.push(format!("  Bridge: {}", summary));
             }
+            knowledge_hits += 1;
         }
         if let Some(sections) = design_sections.get(&key) {
             let mut highlights = Vec::new();
@@ -443,24 +578,40 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
                     section.slug
                 ));
             }
+            if !sections.is_empty() {
+                design_hits += 1;
+            }
         }
         lines.push(String::new());
     }
 
-    Ok(text_response(lines))
+    let metadata = json!({
+        "scope": "global",
+        "query": args.query,
+        "matchCount": matches.len(),
+        "maxResults": max_results,
+        "matchDensity": if max_results == 0 { 0.0 } else { matches.len() as f64 / max_results as f64 },
+        "designAnnotated": design_hits,
+        "knowledgeAnnotated": knowledge_hits,
+        "designSectionsFetched": design_sections.len(),
+        "technologiesScanned": frameworks.len(),
+        "synonymsApplied": query.synonyms_applied(),
+        "synonymMatches": synonym_match_total,
+        "fullMatchCount": full_term_match_count,
+        "avgScore": if matches.is_empty() { 0.0 } else { total_score as f64 / matches.len() as f64 },
+        "queryTerms": term_count,
+    });
+    log_search_query(&context, None, "global", &query.raw, matches.len()).await;
+
+    Ok(text_response(lines).with_metadata(metadata))
 }
 
 fn collect_matches(
     entries: &[FrameworkIndexEntry],
     args: &Args,
-) -> Vec<(i32, FrameworkIndexEntry)> {
-    let terms = args
-        .query
-        .to_lowercase()
-        .split_whitespace()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-
+    query: &QueryConfig,
+    knowledge_tech: Option<&str>,
+) -> Vec<RankedEntry> {
     let mut ranked = Vec::new();
     for entry in entries {
         if let Some(symbol_type) = &args.symbol_type {
@@ -492,29 +643,119 @@ fn collect_matches(
             }
         }
 
-        let score = score_entry(entry, &terms);
-        if score > 0 {
-            ranked.push((score, entry.clone()));
+        if let Some(score) = score_entry(entry, query, knowledge_tech) {
+            ranked.push(RankedEntry {
+                score: score.score,
+                entry: entry.clone(),
+                matched_terms: score.matched_terms,
+                synonym_hits: score.synonym_hits,
+            });
         }
     }
 
     ranked.sort_by(|a, b| {
-        b.0.cmp(&a.0)
-            .then_with(|| a.1.reference.title.cmp(&b.1.reference.title))
+        b.score
+            .cmp(&a.score)
+            .then_with(|| a.entry.reference.title.cmp(&b.entry.reference.title))
     });
     ranked
 }
 
-fn score_entry(entry: &FrameworkIndexEntry, terms: &[String]) -> i32 {
+struct MatchScore {
+    score: i32,
+    matched_terms: usize,
+    synonym_hits: usize,
+}
+
+fn score_entry(
+    entry: &FrameworkIndexEntry,
+    query: &QueryConfig,
+    knowledge_tech: Option<&str>,
+) -> Option<MatchScore> {
     let mut score = 0;
-    for term in terms {
+    let mut matched_terms = 0usize;
+    let mut synonym_hits = 0usize;
+
+    let title_lower = entry
+        .reference
+        .title
+        .as_deref()
+        .unwrap_or_default()
+        .to_lowercase();
+    let id_lower = entry.id.to_lowercase();
+    let url_lower = entry
+        .reference
+        .url
+        .as_deref()
+        .unwrap_or_default()
+        .to_lowercase();
+
+    for term in &query.terms {
+        let mut term_score = 0;
         if entry.tokens.iter().any(|token| token == term) {
-            score += 3;
+            term_score = 6;
+        } else if entry.tokens.iter().any(|token| token.starts_with(term)) {
+            term_score = 4;
         } else if entry.tokens.iter().any(|token| token.contains(term)) {
-            score += 1;
+            term_score = 2;
+        } else if let Some(synonyms) = query.synonyms.get(term) {
+            let mut synonym_hit = false;
+            for synonym in synonyms {
+                if entry.tokens.iter().any(|token| token == synonym) {
+                    term_score = 3;
+                    synonym_hit = true;
+                    break;
+                } else if entry.tokens.iter().any(|token| token.starts_with(synonym)) {
+                    term_score = 2;
+                    synonym_hit = true;
+                    break;
+                } else if entry.tokens.iter().any(|token| token.contains(synonym)) {
+                    term_score = 1;
+                    synonym_hit = true;
+                }
+            }
+            if synonym_hit {
+                synonym_hits += 1;
+            }
+        }
+
+        if term_score > 0 {
+            matched_terms += 1;
+            score += term_score;
         }
     }
-    score
+
+    if !query.raw.is_empty() && title_lower.contains(&query.raw) {
+        score += 3;
+    }
+
+    if !query.compact.is_empty() {
+        if id_lower.contains(&query.compact) || url_lower.contains(&query.compact) {
+            score += 2;
+        }
+    }
+
+    if let Some(tech) = knowledge_tech {
+        if let Some(title) = entry.reference.title.as_deref() {
+            if knowledge::lookup(tech, title).is_some() {
+                score += 2;
+            }
+        }
+    }
+
+    if matched_terms == query.term_count() && query.term_count() > 0 {
+        score += 3;
+    }
+
+    if score > 0 {
+        Some(MatchScore {
+            score,
+            matched_terms,
+            synonym_hits,
+        })
+    } else {
+        None
+    }
 }
 
 fn trim_with_ellipsis(text: &str, max: usize) -> String {
@@ -538,6 +779,8 @@ struct GlobalMatch {
     entry: FrameworkIndexEntry,
     technology_title: String,
     technology_identifier: String,
+    matched_terms: usize,
+    synonym_hits: usize,
 }
 
 async fn gather_design_guidance(
@@ -767,5 +1010,72 @@ fn build_fallback_result(
         description,
         platforms,
         found_via,
+    }
+}
+
+fn prepare_query(raw: &str) -> QueryConfig {
+    let normalized = raw.trim().to_lowercase();
+    let compact = normalized
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect::<String>();
+
+    let mut terms = Vec::new();
+    for token in raw
+        .split(|c: char| {
+            c.is_whitespace()
+                || matches!(
+                    c,
+                    '/' | '.' | '_' | '-' | ':' | '(' | ')' | '[' | ']' | '{' | '}' | ','
+                )
+        })
+        .filter(|token| !token.is_empty())
+    {
+        let term = token.to_lowercase();
+        if !terms.contains(&term) {
+            terms.push(term);
+        }
+    }
+
+    let mut synonyms = HashMap::new();
+    for term in &terms {
+        if let Some(values) = QUERY_SYNONYMS.get(term.as_str()) {
+            let mapped = values
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>();
+            if !mapped.is_empty() {
+                synonyms.insert(term.clone(), mapped);
+            }
+        }
+    }
+
+    QueryConfig {
+        raw: normalized,
+        compact,
+        terms,
+        synonyms,
+    }
+}
+async fn log_search_query(
+    context: &Arc<AppContext>,
+    technology: Option<String>,
+    scope: &str,
+    query: &str,
+    matches: usize,
+) {
+    let entry = SearchQueryLog {
+        technology,
+        scope: scope.to_string(),
+        query: query.to_string(),
+        matches,
+        timestamp: Some(OffsetDateTime::now_utc()),
+    };
+    let mut log = context.state.recent_queries.lock().await;
+    log.push(entry);
+    const MAX_QUERIES: usize = 50;
+    if log.len() > MAX_QUERIES {
+        let overflow = log.len() - MAX_QUERIES;
+        log.drain(0..overflow);
     }
 }

@@ -38,6 +38,7 @@ pub(crate) fn text_response(lines: impl IntoIterator<Item = String>) -> ToolResp
             r#type: "text".to_string(),
             text: lines.into_iter().collect::<Vec<_>>().join("\n"),
         }],
+        metadata: None,
     }
 }
 
@@ -55,10 +56,6 @@ where
 
 pub(crate) fn parse_args<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T> {
     serde_json::from_value(value).map_err(|error| anyhow!("invalid arguments: {error}"))
-}
-
-pub(crate) fn simple_text(text: &str) -> ToolResponse {
-    text_response([text.to_string()])
 }
 
 pub use current_technology::definition as current_technology_definition;

@@ -218,9 +218,8 @@ async fn search_finds_wkwebextension() {
     let text = &response.content[0].text;
     let lower = text.to_ascii_lowercase();
     if !(lower.contains("get_documentation { \"path\": \"webkit/wkwebextension\" }")
-        || lower.contains(
-            "get_documentation { \"path\": \"documentation/webkit/wkwebextension\" }",
-        )
+        || lower
+            .contains("get_documentation { \"path\": \"documentation/webkit/wkwebextension\" }")
         || text.contains("get_documentation { \"path\": \"WebKit/wkwebextension\" }"))
     {
         eprintln!(

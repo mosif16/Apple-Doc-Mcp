@@ -159,14 +159,69 @@ fn build_symbol_entry(identifier: &str, symbol: &SymbolData) -> FrameworkIndexEn
 
 fn tokenize_into(value: &str, tokens: &mut Vec<String>) {
     for token in value
-        .split(|c: char| c.is_whitespace() || matches!(c, '/' | '.' | '_' | '-'))
+        .split(|c: char| {
+            c.is_whitespace()
+                || matches!(
+                    c,
+                    '/' | '.' | '_' | '-' | '(' | ')' | ':' | ';' | ',' | '[' | ']' | '{' | '}'
+                )
+        })
         .filter(|token| !token.is_empty())
     {
-        let lower = token.to_lowercase();
-        if !tokens.contains(&lower) {
-            tokens.push(lower);
+        insert_token(tokens, token);
+        for piece in split_camel_case(token) {
+            insert_token(tokens, &piece);
         }
     }
+}
+
+fn insert_token(tokens: &mut Vec<String>, token: &str) {
+    if token.is_empty() {
+        return;
+    }
+    let lower = token.to_lowercase();
+    if !tokens.contains(&lower) {
+        tokens.push(lower);
+    }
+}
+
+fn split_camel_case(token: &str) -> Vec<String> {
+    if token.chars().all(|c| !c.is_alphabetic()) {
+        return Vec::new();
+    }
+
+    let chars: Vec<char> = token.chars().collect();
+    let mut pieces = Vec::new();
+    let mut start = 0;
+
+    for i in 1..chars.len() {
+        let current = chars[i];
+        let previous = chars[i - 1];
+        let next_is_lowercase = chars
+            .get(i + 1)
+            .map(|next| next.is_lowercase())
+            .unwrap_or(false);
+
+        let boundary = (previous.is_lowercase() && current.is_uppercase())
+            || (previous.is_uppercase() && current.is_uppercase() && next_is_lowercase);
+
+        if boundary {
+            if let Some(slice) = token.get(start..i) {
+                if !slice.is_empty() {
+                    pieces.push(slice.to_string());
+                }
+            }
+            start = i;
+        }
+    }
+
+    if let Some(slice) = token.get(start..) {
+        if !slice.is_empty() {
+            pieces.push(slice.to_string());
+        }
+    }
+
+    pieces
 }
 
 fn normalize_reference_link(input: &str) -> String {

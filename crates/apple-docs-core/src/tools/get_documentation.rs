@@ -6,7 +6,7 @@ use apple_docs_client::types::{
     TopicSection,
 };
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::{
     markdown,
@@ -25,6 +25,12 @@ struct CodeSnippet {
     language: String,
     code: String,
     caption: Option<String>,
+}
+
+#[derive(Debug)]
+struct RenderOutput {
+    lines: Vec<String>,
+    metadata: Value,
 }
 
 pub fn definition() -> (ToolDefinition, ToolHandler) {
@@ -87,8 +93,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
                         design_guidance::guidance_for(&context, &symbol_title, &symbol_path)
                             .await
                             .unwrap_or_default();
-                    let lines = build_response(&active.title, &symbol, &design_sections);
-                    return Ok(text_response(lines));
+                    let render = build_symbol_response(&active.title, &symbol, &design_sections);
+                    return Ok(text_response(render.lines).with_metadata(render.metadata));
                 }
 
                 match serde_json::from_value::<TopicData>(value) {
@@ -104,9 +110,9 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
                             design_guidance::guidance_for(&context, &topic_title, &topic_path)
                                 .await
                                 .unwrap_or_default();
-                        let lines =
+                        let render =
                             build_topic_response(&active.title, &path, &topic, &design_sections);
-                        return Ok(text_response(lines));
+                        return Ok(text_response(render.lines).with_metadata(render.metadata));
                     }
                     Err(error) => {
                         last_error = Some(anyhow!(
@@ -181,14 +187,24 @@ fn build_topic_response(
     path: &str,
     topic: &TopicData,
     design_sections: &[design_guidance::DesignSection],
-) -> Vec<String> {
+) -> RenderOutput {
     let title = topic
         .metadata
         .title
         .clone()
         .unwrap_or_else(|| "Topic".to_string());
     let description = extract_text(&topic.r#abstract);
-    let summary = build_topic_summary(topic, &description, design_sections);
+    let parameters = extract_topic_parameters(topic);
+    let relationships = extract_topic_relationships(topic);
+    let summary = build_topic_summary(
+        topic,
+        &description,
+        design_sections,
+        &parameters,
+        &relationships,
+    );
+    let summary_count = summary.len();
+    let has_sample_summary = summary.iter().any(|entry| entry.contains("Sample code"));
 
     let mut lines = vec![
         markdown::header(1, &title),
@@ -254,14 +270,48 @@ fn build_topic_response(
         }
     }
 
-    lines
+    if !relationships.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Related Content"));
+        for rel in &relationships {
+            lines.push(format!(
+                "• **{}** — {} (`get_documentation {{ \"path\": \"{}\" }}`)",
+                rel.title, rel.summary, rel.path
+            ));
+        }
+    }
+
+    if !parameters.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Key Parameters"));
+        for param in &parameters {
+            lines.push(format!(
+                "• **{}** — {}",
+                param.name,
+                trim_with_ellipsis(&param.summary, 120)
+            ));
+        }
+    }
+
+    let metadata = json!({
+        "kind": "topic",
+        "designSections": design_sections.len(),
+        "topicSections": topic.topic_sections.len(),
+        "summaryCount": summary_count,
+        "hasSampleSummary": has_sample_summary,
+        "sampleReferences": count_topic_sample_references(topic),
+        "relationshipCount": relationships.len(),
+        "parameterCount": parameters.len(),
+    });
+
+    RenderOutput { lines, metadata }
 }
 
-fn build_response(
+fn build_symbol_response(
     technology_title: &str,
     symbol: &SymbolData,
     design_sections: &[design_guidance::DesignSection],
-) -> Vec<String> {
+) -> RenderOutput {
     let title = symbol
         .metadata
         .title
@@ -285,6 +335,8 @@ fn build_response(
                 caption: snippet.caption.map(|caption| caption.to_string()),
             });
     let snippet = snippet_from_knowledge.or_else(|| extract_symbol_snippet(symbol));
+    let relationships = extract_relationships(symbol);
+    let parameters = extract_parameters(symbol);
     let summary = build_symbol_summary(
         symbol,
         &kind,
@@ -293,7 +345,11 @@ fn build_response(
         snippet.as_ref(),
         quick_tip,
         design_sections,
+        &relationships,
+        &parameters,
     );
+    let summary_count = summary.len();
+    let has_sample_summary = summary.iter().any(|line| line.contains("Sample code"));
 
     let mut lines = vec![
         markdown::header(1, &title),
@@ -341,7 +397,7 @@ fn build_response(
         }
     }
 
-    if let Some(entry) = knowledge_entry {
+    let has_knowledge = if let Some(entry) = knowledge_entry {
         let related = knowledge::related_items(entry);
         let integration = knowledge::integration_links(entry);
         if !related.is_empty() || !integration.is_empty() {
@@ -360,7 +416,10 @@ fn build_response(
                 ));
             }
         }
-    }
+        true
+    } else {
+        false
+    };
 
     lines.push(String::new());
     lines.push(markdown::header(2, "Overview"));
@@ -400,7 +459,45 @@ fn build_response(
         }
     }
 
-    lines
+    if !relationships.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Relationships"));
+        for rel in &relationships {
+            lines.push(format!(
+                "• **{}** — {} (`get_documentation {{ \"path\": \"{}\" }}`)",
+                rel.title, rel.summary, rel.path
+            ));
+        }
+    }
+
+    if !parameters.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Parameters"));
+        for param in &parameters {
+            lines.push(format!(
+                "• **{}** — {}",
+                param.name,
+                trim_with_ellipsis(&param.summary, 120)
+            ));
+        }
+    }
+
+    let metadata = json!({
+        "kind": "symbol",
+        "designSections": design_sections.len(),
+        "topicSections": symbol.topic_sections.len(),
+        "hasSnippet": snippet.is_some(),
+        "hasKnowledge": has_knowledge,
+        "hasQuickTip": quick_tip.is_some(),
+        "platformCount": symbol.metadata.platforms.len(),
+        "sampleReferences": count_symbol_sample_references(symbol),
+        "relationshipCount": relationships.len(),
+        "parameterCount": parameters.len(),
+        "summaryCount": summary_count,
+        "hasSampleSummary": has_sample_summary,
+    });
+
+    RenderOutput { lines, metadata }
 }
 
 fn trim_with_ellipsis(text: &str, max: usize) -> String {
@@ -419,6 +516,8 @@ fn build_symbol_summary(
     snippet: Option<&CodeSnippet>,
     quick_tip: Option<&str>,
     design_sections: &[design_guidance::DesignSection],
+    relationships: &[RelationshipEntry],
+    parameters: &[ParameterEntry],
 ) -> Vec<String> {
     let mut summary = Vec::new();
 
@@ -459,6 +558,26 @@ fn build_symbol_summary(
         summary.push(format!("• Design: {design_summary}"));
     }
 
+    if !relationships.is_empty() {
+        let highlights = relationships
+            .iter()
+            .map(|rel| rel.title.clone())
+            .take(3)
+            .collect::<Vec<_>>()
+            .join(" · ");
+        summary.push(format!("• Related types: {highlights}"));
+    }
+
+    if !parameters.is_empty() {
+        let highlights = parameters
+            .iter()
+            .map(|param| param.name.clone())
+            .take(3)
+            .collect::<Vec<_>>()
+            .join(" · ");
+        summary.push(format!("• Parameters: {highlights}"));
+    }
+
     summary
 }
 
@@ -484,6 +603,8 @@ fn build_topic_summary(
     topic: &TopicData,
     overview: &str,
     design_sections: &[design_guidance::DesignSection],
+    parameters: &[ParameterEntry],
+    relationships: &[RelationshipEntry],
 ) -> Vec<String> {
     let mut summary = Vec::new();
 
@@ -502,6 +623,26 @@ fn build_topic_summary(
 
     if let Some(design_summary) = summarize_design(design_sections) {
         summary.push(format!("• Design: {design_summary}"));
+    }
+
+    if !relationships.is_empty() {
+        let highlights = relationships
+            .iter()
+            .map(|rel| rel.title.clone())
+            .take(3)
+            .collect::<Vec<_>>()
+            .join(" · ");
+        summary.push(format!("• Related content: {highlights}"));
+    }
+
+    if !parameters.is_empty() {
+        let highlights = parameters
+            .iter()
+            .map(|param| param.name.clone())
+            .take(3)
+            .collect::<Vec<_>>()
+            .join(" · ");
+        summary.push(format!("• Parameters: {highlights}"));
     }
 
     summary
@@ -698,6 +839,231 @@ fn contains_code_listing(value: &Value) -> bool {
     }
 }
 
+fn count_symbol_sample_references(symbol: &SymbolData) -> usize {
+    symbol
+        .references
+        .values()
+        .filter(|reference| {
+            reference
+                .kind
+                .as_deref()
+                .map(|kind| kind.eq_ignore_ascii_case("samplecode"))
+                .unwrap_or(false)
+        })
+        .count()
+}
+
+fn count_topic_sample_references(topic: &TopicData) -> usize {
+    let mut count = 0;
+    for section in &topic.topic_sections {
+        for identifier in &section.identifiers {
+            if let Some(reference) = topic.references.get(identifier) {
+                if reference
+                    .kind
+                    .as_deref()
+                    .map(|kind| kind.eq_ignore_ascii_case("samplecode"))
+                    .unwrap_or(false)
+                {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+#[derive(Clone)]
+struct RelationshipEntry {
+    title: String,
+    path: String,
+    summary: String,
+}
+
+#[derive(Clone)]
+struct ParameterEntry {
+    name: String,
+    summary: String,
+}
+
+fn extract_relationships(symbol: &SymbolData) -> Vec<RelationshipEntry> {
+    let mut items = Vec::new();
+    for section in &symbol.topic_sections {
+        if !section.title.to_lowercase().contains("relationship") {
+            continue;
+        }
+        for identifier in &section.identifiers {
+            if let Some(reference) = symbol.references.get(identifier) {
+                let title = reference
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| identifier.to_string());
+                let summary = reference
+                    .r#abstract
+                    .as_ref()
+                    .map(|segments| extract_text(segments))
+                    .unwrap_or_default();
+                let path = reference
+                    .url
+                    .clone()
+                    .unwrap_or_else(|| identifier.to_string());
+                items.push(RelationshipEntry {
+                    title,
+                    path,
+                    summary,
+                });
+            }
+        }
+    }
+    items
+}
+
+fn extract_topic_relationships(topic: &TopicData) -> Vec<RelationshipEntry> {
+    let mut items = Vec::new();
+    for section in &topic.topic_sections {
+        if !section.title.to_lowercase().contains("relationship") {
+            continue;
+        }
+        for identifier in &section.identifiers {
+            if let Some(reference) = topic.references.get(identifier) {
+                let title = reference
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| identifier.to_string());
+                let summary = reference
+                    .r#abstract
+                    .as_ref()
+                    .map(|segments| extract_text(segments))
+                    .unwrap_or_default();
+                let path = reference
+                    .url
+                    .clone()
+                    .unwrap_or_else(|| identifier.to_string());
+                items.push(RelationshipEntry {
+                    title,
+                    path,
+                    summary,
+                });
+            }
+        }
+    }
+    items
+}
+
+fn extract_parameters(symbol: &SymbolData) -> Vec<ParameterEntry> {
+    let mut items = Vec::new();
+    for section in &symbol.topic_sections {
+        let title = section.title.to_lowercase();
+        if !title.contains("parameter") && !title.contains("argument") {
+            continue;
+        }
+        for identifier in &section.identifiers {
+            if let Some(reference) = symbol.references.get(identifier) {
+                let name = reference
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| identifier.to_string());
+                let summary = reference
+                    .r#abstract
+                    .as_ref()
+                    .map(|segments| extract_text(segments))
+                    .unwrap_or_default();
+                items.push(ParameterEntry { name, summary });
+            }
+        }
+    }
+    if items.is_empty() {
+        items.extend(extract_inline_parameters(&symbol.primary_content_sections));
+    }
+    items
+}
+
+fn extract_topic_parameters(topic: &TopicData) -> Vec<ParameterEntry> {
+    let mut items = Vec::new();
+    for section in &topic.topic_sections {
+        let title = section.title.to_lowercase();
+        if !title.contains("parameter") && !title.contains("argument") {
+            continue;
+        }
+        for identifier in &section.identifiers {
+            if let Some(reference) = topic.references.get(identifier) {
+                let name = reference
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| identifier.to_string());
+                let summary = reference
+                    .r#abstract
+                    .as_ref()
+                    .map(|segments| extract_text(segments))
+                    .unwrap_or_default();
+                items.push(ParameterEntry { name, summary });
+            }
+        }
+    }
+    items
+}
+
+fn extract_inline_parameters(sections: &[Value]) -> Vec<ParameterEntry> {
+    let mut items = Vec::new();
+    for value in sections {
+        collect_parameters_from_value(value, &mut items);
+    }
+    items
+}
+
+fn collect_parameters_from_value(value: &Value, items: &mut Vec<ParameterEntry>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(kind) = map.get("kind").and_then(Value::as_str) {
+                if kind.eq_ignore_ascii_case("parameters") || kind.eq_ignore_ascii_case("arguments")
+                {
+                    if let Some(content) = map.get("content").and_then(Value::as_array) {
+                        for entry in content {
+                            if let Some(name) = entry
+                                .get("name")
+                                .or_else(|| entry.get("title"))
+                                .and_then(Value::as_str)
+                            {
+                                let summary = entry
+                                    .get("description")
+                                    .or_else(|| entry.get("abstract"))
+                                    .and_then(Value::as_array)
+                                    .map(|segments| extract_rich_text(segments))
+                                    .unwrap_or_default();
+                                items.push(ParameterEntry {
+                                    name: name.to_string(),
+                                    summary,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            for nested in map.values() {
+                collect_parameters_from_value(nested, items);
+            }
+        }
+        Value::Array(array) => {
+            for item in array {
+                collect_parameters_from_value(item, items);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn extract_rich_text(segments: &[Value]) -> String {
+    let mut text = String::new();
+    for segment in segments {
+        if let Some(content) = segment.get("text").and_then(Value::as_str) {
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.push_str(content);
+        }
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -820,6 +1186,8 @@ mod tests {
             None,
             None,
             &[],
+            &[],
+            &[],
         );
 
         assert!(summary
@@ -834,8 +1202,13 @@ mod tests {
     #[test]
     fn topic_summary_includes_sections() {
         let topic = sample_topic();
-        let summary =
-            build_topic_summary(&topic, "Learn how to compose complex SwiftUI views.", &[]);
+        let summary = build_topic_summary(
+            &topic,
+            "Learn how to compose complex SwiftUI views.",
+            &[],
+            &[],
+            &[],
+        );
 
         assert!(summary.iter().any(|line| line.contains("Summary:")));
         assert!(summary
@@ -855,6 +1228,8 @@ mod tests {
             "Displays styled text.",
             snippet.as_ref(),
             None,
+            &[],
+            &[],
             &[],
         );
 
