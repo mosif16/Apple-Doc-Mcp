@@ -24,13 +24,17 @@ use crate::{
     },
     tools::{parse_args, text_response, wrap_handler},
 };
-use futures::future;
+use futures::{
+    future,
+    stream::{self, StreamExt},
+};
 use time::OffsetDateTime;
 use tracing::{debug, warn};
 
 const MAX_DESIGN_GUIDANCE_LOOKUPS: usize = 3;
+const GLOBAL_SEARCH_CONCURRENCY: usize = 6;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Args {
     query: String,
     #[serde(rename = "maxResults")]
@@ -376,25 +380,81 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         .filter(|tech| tech.kind == "symbol" && tech.role == "collection")
         .collect();
 
-    let mut aggregate = Vec::new();
-    for technology in &frameworks {
-        let mut matches = collect_matches(
-            &ensure_global_framework_index(&context, technology).await?,
-            &args,
-            &query,
-            Some(technology.title.as_str()),
-        );
-        matches.truncate(max_results);
+    let lowered_terms: Vec<String> = query.terms.iter().map(|term| term.to_lowercase()).collect();
 
-        for ranked in matches {
-            aggregate.push(GlobalMatch {
-                score: ranked.score,
-                entry: ranked.entry,
-                technology_title: technology.title.clone(),
-                technology_identifier: technology.identifier.clone(),
-                matched_terms: ranked.matched_terms,
-                synonym_hits: ranked.synonym_hits,
-            });
+    let mut prioritized = Vec::new();
+    let mut fallback = Vec::new();
+    for technology in frameworks {
+        let title_lower = technology.title.to_lowercase();
+        if lowered_terms.is_empty() || lowered_terms.iter().any(|term| title_lower.contains(term)) {
+            prioritized.push(technology);
+        } else {
+            fallback.push(technology);
+        }
+    }
+
+    let prioritized_count = prioritized.len();
+    let mut ordered: Vec<(Technology, bool)> =
+        prioritized.into_iter().map(|tech| (tech, true)).collect();
+    ordered.extend(fallback.into_iter().map(|tech| (tech, false)));
+
+    let total_available = ordered.len();
+    let mut aggregate = Vec::new();
+    let mut scanned = 0usize;
+    let mut scanned_prioritized = 0usize;
+
+    let mut stream = stream::iter(ordered.into_iter())
+        .map(|(technology, prioritized)| {
+            let context = context.clone();
+            let args = args.clone();
+            let query = query.clone();
+            async move {
+                let tech_for_error = technology.clone();
+                let index = ensure_global_framework_index(&context, &technology)
+                    .await
+                    .map_err(|error| (prioritized, tech_for_error, error))?;
+                let matches =
+                    collect_matches(&index, &args, &query, Some(technology.title.as_str()));
+                Ok::<_, (bool, Technology, anyhow::Error)>((technology, prioritized, matches))
+            }
+        })
+        .buffer_unordered(GLOBAL_SEARCH_CONCURRENCY);
+
+    while let Some(result) = stream.next().await {
+        scanned += 1;
+        match result {
+            Ok((technology, prioritized, mut matches)) => {
+                if prioritized {
+                    scanned_prioritized += 1;
+                }
+                matches.truncate(max_results);
+                for ranked in matches {
+                    aggregate.push(GlobalMatch {
+                        score: ranked.score,
+                        entry: ranked.entry,
+                        technology_title: technology.title.clone(),
+                        technology_identifier: technology.identifier.clone(),
+                        matched_terms: ranked.matched_terms,
+                        synonym_hits: ranked.synonym_hits,
+                    });
+                }
+            }
+            Err((prioritized, technology, error)) => {
+                if prioritized {
+                    scanned_prioritized += 1;
+                }
+                warn!(
+                    target: "apple_docs_search",
+                    title = %technology.title,
+                    identifier = %technology.identifier,
+                    error = %error,
+                    "Failed to prepare technology for global search"
+                );
+            }
+        }
+
+        if aggregate.len() >= max_results && scanned_prioritized >= prioritized_count {
+            break;
         }
     }
 
@@ -436,11 +496,21 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         String::new(),
         markdown::bold("Scope", "All Apple Technologies"),
         markdown::bold("Matches", &matches.len().to_string()),
-        markdown::bold("Technologies Scanned", &frameworks.len().to_string()),
+        markdown::bold(
+            "Technologies Scanned",
+            &format!("{} of {}", scanned, total_available),
+        ),
         String::new(),
         markdown::header(2, "Symbols"),
         String::new(),
     ];
+
+    if scanned < total_available {
+        lines.push(format!(
+            "_Stopped after scanning {scanned} of {total_available} technologies once enough matches were found._"
+        ));
+        lines.push(String::new());
+    }
 
     let design_targets: Vec<FrameworkIndexEntry> = matches
         .iter()
@@ -472,7 +542,10 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
             "matchDensity": 0.0,
             "designAnnotated": 0,
             "knowledgeAnnotated": 0,
-            "technologiesScanned": frameworks.len(),
+            "technologiesScanned": scanned,
+            "technologiesAvailable": total_available,
+            "scanCompleted": scanned >= total_available,
+            "priorityTechnologies": prioritized_count,
             "synonymsApplied": query.synonyms_applied(),
             "synonymMatches": 0,
             "fullMatchCount": 0,
@@ -594,7 +667,10 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         "designAnnotated": design_hits,
         "knowledgeAnnotated": knowledge_hits,
         "designSectionsFetched": design_sections.len(),
-        "technologiesScanned": frameworks.len(),
+        "technologiesScanned": scanned,
+        "technologiesAvailable": total_available,
+        "scanCompleted": scanned >= total_available,
+        "priorityTechnologies": prioritized_count,
         "synonymsApplied": query.synonyms_applied(),
         "synonymMatches": synonym_match_total,
         "fullMatchCount": full_term_match_count,

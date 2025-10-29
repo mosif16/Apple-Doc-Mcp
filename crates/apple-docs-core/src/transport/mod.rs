@@ -195,10 +195,51 @@ async fn handle_request(executor: ToolExecutor, request: RpcRequest) -> Option<R
                 )),
             }
         }
-        _ => Some(RpcResponse::error(
-            Some(id_value),
-            -32601,
-            format!("Unknown method: {}", method),
+        _ => {
+            if let Some(response) = handle_tool_passthrough(
+                executor.clone(),
+                method,
+                request.params.clone(),
+                id_value.clone(),
+            )
+            .await
+            {
+                return Some(response);
+            }
+
+            Some(RpcResponse::error(
+                Some(id_value),
+                -32601,
+                format!("Unknown method: {}", method),
+            ))
+        }
+    }
+}
+
+async fn handle_tool_passthrough(
+    executor: ToolExecutor,
+    method: &str,
+    params: Option<serde_json::Value>,
+    id: serde_json::Value,
+) -> Option<RpcResponse> {
+    let arguments = match params {
+        None | Some(serde_json::Value::Null) => serde_json::json!({}),
+        Some(serde_json::Value::Object(map)) => serde_json::Value::Object(map),
+        Some(_) => {
+            return Some(RpcResponse::error(
+                Some(id),
+                -32602,
+                "Tool arguments must be an object",
+            ));
+        }
+    };
+
+    match executor.call_tool(method, arguments).await {
+        Ok(response) => Some(RpcResponse::result(
+            Some(id),
+            serde_json::to_value(response).expect("tool response is serializable"),
         )),
+        Err(ToolExecutorError::UnknownTool(_)) => None,
+        Err(error) => Some(RpcResponse::error(Some(id), -32000, error.to_string())),
     }
 }

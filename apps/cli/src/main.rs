@@ -1,7 +1,9 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, Context, Result};
-use apple_docs_core::{bootstrap, ServerConfig, ServerMode, ToolExecutor, ToolExecutorError};
+use apple_docs_core::{
+    bootstrap, state::AppContext, ServerConfig, ServerMode, ToolExecutor, ToolExecutorError,
+};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use indicatif::ProgressBar;
@@ -140,31 +142,33 @@ async fn main() -> Result<()> {
     };
 
     let runtime = bootstrap(config).await?;
+    let executor = runtime.executor();
+    let session = session::SessionManager::new(executor.context());
+    session.restore().await;
 
-    match &cli.command {
-        Command::Serve => runtime.clone().serve().await?,
+    let result: Result<()> = match &cli.command {
+        Command::Serve => runtime.clone().serve().await,
         Command::Completions { shell } => {
             let mut command = Cli::command();
             clap_complete::generate(*shell, &mut command, "apple-docs", &mut std::io::stdout());
+            Ok(())
         }
         Command::Tools { command } => {
-            let executor = runtime.executor();
             let renderer = Renderer::new(cli.format);
-            handle_tool_command(command.clone(), &cli, &renderer, executor).await?;
+            handle_tool_command(command.clone(), &cli, &renderer, executor.clone()).await
         }
         Command::Cache { command } => {
-            let executor = runtime.executor();
             let renderer = Renderer::new(cli.format);
-            handle_cache_command(command.clone(), &cli, &renderer, executor).await?;
+            handle_cache_command(command.clone(), &cli, &renderer, executor.clone()).await
         }
         Command::Telemetry { limit } => {
-            let executor = runtime.executor();
             let renderer = Renderer::new(cli.format);
-            handle_telemetry_command(*limit, &cli, &renderer, executor).await?;
+            handle_telemetry_command(*limit, &cli, &renderer, executor.clone()).await
         }
-    }
+    };
 
-    Ok(())
+    session.persist().await;
+    result
 }
 
 async fn handle_tool_command(
@@ -764,5 +768,131 @@ mod progress {
         progress.set_message(message.into());
         progress.enable_steady_tick(Duration::from_millis(80));
         Some(progress)
+    }
+}
+
+mod session {
+    use super::*;
+    use anyhow::{Context, Result};
+    use serde::{Deserialize, Serialize};
+    use tokio::fs;
+    use tracing::{debug, warn};
+
+    const STATE_FILE_NAME: &str = "cli-session.json";
+
+    #[derive(Debug)]
+    pub struct SessionManager {
+        context: Arc<AppContext>,
+        path: PathBuf,
+    }
+
+    #[derive(Debug, Default, Serialize, Deserialize)]
+    struct PersistedState {
+        #[serde(rename = "activeTechnology")]
+        active_technology: Option<PersistedTechnology>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct PersistedTechnology {
+        identifier: String,
+        title: String,
+    }
+
+    impl SessionManager {
+        pub fn new(context: Arc<AppContext>) -> Self {
+            let path = context.client.cache_dir().join(STATE_FILE_NAME);
+            Self { context, path }
+        }
+
+        pub async fn restore(&self) {
+            if let Err(error) = self.restore_inner().await {
+                warn!(
+                    target: "apple_docs_cli",
+                    error = %error,
+                    "failed to restore CLI session state"
+                );
+            }
+        }
+
+        pub async fn persist(&self) {
+            if let Err(error) = self.persist_inner().await {
+                warn!(
+                    target: "apple_docs_cli",
+                    error = %error,
+                    "failed to persist CLI session state"
+                );
+            }
+        }
+
+        async fn restore_inner(&self) -> Result<()> {
+            if !fs::try_exists(&self.path).await? {
+                return Ok(());
+            }
+            let bytes = fs::read(&self.path).await?;
+            if bytes.is_empty() {
+                return Ok(());
+            }
+            let state: PersistedState =
+                serde_json::from_slice(&bytes).context("invalid CLI session state")?;
+            if let Some(saved) = state.active_technology {
+                self.apply(saved).await?;
+            }
+            Ok(())
+        }
+
+        async fn apply(&self, saved: PersistedTechnology) -> Result<()> {
+            let technologies = self.context.client.get_technologies().await?;
+            let normalized = saved.identifier.to_lowercase();
+            let matched = technologies
+                .values()
+                .find(|tech| {
+                    tech.identifier.to_lowercase() == normalized
+                        || tech
+                            .identifier
+                            .rsplit('/')
+                            .next()
+                            .map(|slug| slug.eq_ignore_ascii_case(&saved.identifier))
+                            .unwrap_or(false)
+                })
+                .cloned();
+
+            match matched {
+                Some(technology) => {
+                    *self.context.state.active_technology.write().await = Some(technology.clone());
+                    self.context.state.framework_cache.write().await.take();
+                    self.context.state.framework_index.write().await.take();
+                    debug!(
+                        target: "apple_docs_cli",
+                        identifier = %technology.identifier,
+                        "restored active technology from session state"
+                    );
+                }
+                None => {
+                    warn!(
+                        target: "apple_docs_cli",
+                        identifier = %saved.identifier,
+                        "stored technology identifier no longer available"
+                    );
+                    self.context.state.active_technology.write().await.take();
+                }
+            }
+            Ok(())
+        }
+
+        async fn persist_inner(&self) -> Result<()> {
+            if let Some(parent) = self.path.parent() {
+                fs::create_dir_all(parent).await.ok();
+            }
+            let snapshot = self.context.state.active_technology.read().await.clone();
+            let state = PersistedState {
+                active_technology: snapshot.map(|tech| PersistedTechnology {
+                    identifier: tech.identifier,
+                    title: tech.title,
+                }),
+            };
+            let payload = serde_json::to_vec_pretty(&state)?;
+            fs::write(&self.path, payload).await?;
+            Ok(())
+        }
     }
 }

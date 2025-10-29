@@ -9,6 +9,13 @@
 - Split the transport loop so JSON-RPC handling now delegates to the executor while preserving response semantics and error mapping.
 - Expanded the CLI into a multi-command utility (`serve`, `tools`, `cache`, `telemetry`, `completions`) with structured renderers (`json|markdown|table|text`), progress spinners, cache warmup/status management, and telemetry inspection.
 - Added unit tests for the executor scaffold, updated the workspace to derive debug traits needed for assertions, and refreshed the README with shell-first usage guidance.
+- Added telemetry instrumentation changes and improved search ranking heuristics.
+
+2025-10-29 (gpt-5-codex agent):
+- Persisted the CLI's active technology across invocations (stored under `cli-session.json`) so follow-up commands keep working after `choose_technology`.
+- Hardened `choose_technology` resolution with identifier-first matching, ambiguity detection, and richer metadata to avoid picking the wrong framework when input is vague.
+- Reworked global `search_symbols` to prioritize likely frameworks and process them concurrently, cutting timeouts and reporting how many technologies were scanned.
+- Allowed direct JSON-RPC tool names (e.g. `choose_technology`, `search_symbols`) by forwarding unknown methods to `tools/call` for parity with CLI usage.
 
 ## Multiphase Retrieval Enhancement Plan
 - Phase 1 – Instrumentation & Benchmarks *(Completed 2025-10-20 19:05Z · Owner: Codex agent)*  
