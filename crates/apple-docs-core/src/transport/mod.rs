@@ -1,13 +1,10 @@
-use std::{sync::Arc, time::Instant};
-
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, info, warn};
 
-use crate::state::{AppContext, TelemetryEntry};
-use time::OffsetDateTime;
+use crate::executor::{ToolExecutor, ToolExecutorError};
 
 const SERVER_INSTRUCTIONS: &str = r#"You are connected to the Apple Developer Documentation MCP server. Use the provided tools to ground every answer in official documentation before responding to the user.
 
@@ -24,7 +21,7 @@ Response expectations:
 
 These instructions remain in effect for the entire session. Re-check the active technology when the conversation shifts topics, and prefer incremental tool calls over large speculative queries."#;
 
-pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
+pub async fn serve_stdio(executor: ToolExecutor) -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut reader = BufReader::new(stdin);
@@ -41,7 +38,7 @@ pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
 
         debug!(target: "apple_docs_transport", request = buffer.trim());
         let maybe_response = match serde_json::from_str::<RpcRequest>(&buffer) {
-            Ok(request) => handle_request(context.clone(), request).await,
+            Ok(request) => handle_request(executor.clone(), request).await,
             Err(error) => {
                 warn!(target: "apple_docs_transport", error = %error, "Failed to parse request");
                 Some(RpcResponse::error(None, -32700, "Parse error"))
@@ -106,7 +103,7 @@ impl RpcResponse {
     }
 }
 
-async fn handle_request(context: Arc<AppContext>, request: RpcRequest) -> Option<RpcResponse> {
+async fn handle_request(executor: ToolExecutor, request: RpcRequest) -> Option<RpcResponse> {
     let method = request.method.as_str();
 
     if request.id.is_none() {
@@ -146,7 +143,7 @@ async fn handle_request(context: Arc<AppContext>, request: RpcRequest) -> Option
             }),
         )),
         "list_tools" | "tools/list" => {
-            let definitions = context.tools.definitions().await;
+            let definitions = executor.list_tools().await;
             Some(RpcResponse::result(
                 Some(id_value.clone()),
                 json!({"tools": definitions}),
@@ -174,67 +171,20 @@ async fn handle_request(context: Arc<AppContext>, request: RpcRequest) -> Option
                         }
                     };
 
-                    match context.tools.get(&name).await {
-                        Some(entry) => {
-                            let handler = entry.handler.clone();
-                            let started = Instant::now();
-                            match handler(context.clone(), arguments).await {
-                                Ok(response) => {
-                                    let latency_ms = started.elapsed().as_millis() as u64;
-                                    let metadata = response.metadata.clone();
-                                    let entry = TelemetryEntry {
-                                        tool: name.clone(),
-                                        timestamp: OffsetDateTime::now_utc(),
-                                        latency_ms,
-                                        success: true,
-                                        metadata: metadata.clone(),
-                                        error: None,
-                                    };
-                                    context.record_telemetry(entry).await;
-                                    info!(
-                                        target: "apple_docs_transport",
-                                        tool = %name,
-                                        latency_ms,
-                                        success = true,
-                                        metadata = metadata.as_ref().map(|value| value.to_string()).unwrap_or_else(|| "null".to_string()),
-                                        "tool completed"
-                                    );
-                                    Some(RpcResponse::result(
-                                        Some(id_value.clone()),
-                                        serde_json::to_value(response).unwrap(),
-                                    ))
-                                }
-                                Err(error) => {
-                                    let latency_ms = started.elapsed().as_millis() as u64;
-                                    let message = error.to_string();
-                                    let entry = TelemetryEntry {
-                                        tool: name.clone(),
-                                        timestamp: OffsetDateTime::now_utc(),
-                                        latency_ms,
-                                        success: false,
-                                        metadata: None,
-                                        error: Some(message.clone()),
-                                    };
-                                    context.record_telemetry(entry).await;
-                                    warn!(
-                                        target: "apple_docs_transport",
-                                        tool = %name,
-                                        latency_ms,
-                                        error = %message,
-                                        "tool failed"
-                                    );
-                                    Some(RpcResponse::error(
-                                        Some(id_value.clone()),
-                                        -32000,
-                                        message,
-                                    ))
-                                }
-                            }
-                        }
-                        None => Some(RpcResponse::error(
+                    match executor.call_tool(&name, arguments).await {
+                        Ok(response) => Some(RpcResponse::result(
+                            Some(id_value.clone()),
+                            serde_json::to_value(response).unwrap(),
+                        )),
+                        Err(ToolExecutorError::UnknownTool(_)) => Some(RpcResponse::error(
                             Some(id_value.clone()),
                             -32601,
                             format!("Unknown tool: {}", name),
+                        )),
+                        Err(error) => Some(RpcResponse::error(
+                            Some(id_value.clone()),
+                            -32000,
+                            error.to_string(),
                         )),
                     }
                 }

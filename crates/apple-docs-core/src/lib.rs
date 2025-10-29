@@ -3,6 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use anyhow::Result;
 use apple_docs_client::{AppleDocsClient, ClientConfig};
 
+pub mod executor;
 pub mod markdown;
 pub mod services;
 pub mod state;
@@ -39,10 +40,33 @@ impl Default for ServerConfig {
     }
 }
 
-/// Placeholder entry point for the core server runtime.
-///
-/// Later phases will replace this stub with the full MCP event loop.
-pub async fn run(config: ServerConfig) -> Result<()> {
+#[derive(Clone)]
+pub struct CoreRuntime {
+    config: ServerConfig,
+    executor: executor::ToolExecutor,
+}
+
+impl CoreRuntime {
+    pub fn executor(&self) -> executor::ToolExecutor {
+        self.executor.clone()
+    }
+
+    pub fn config(&self) -> &ServerConfig {
+        &self.config
+    }
+
+    pub async fn serve(&self) -> Result<()> {
+        match self.config.mode {
+            ServerMode::Stdio => transport::serve_stdio(self.executor.clone()).await?,
+            ServerMode::Headless => {
+                debug!(target: "apple_docs_core", "Headless mode: skipping transport loop")
+            }
+        }
+        Ok(())
+    }
+}
+
+pub async fn bootstrap(config: ServerConfig) -> Result<CoreRuntime> {
     let client = match &config.cache_dir {
         Some(dir) => AppleDocsClient::with_config(ClientConfig {
             cache_dir: dir.clone(),
@@ -68,14 +92,15 @@ pub async fn run(config: ServerConfig) -> Result<()> {
         "Core server starting"
     );
 
-    match config.mode {
-        ServerMode::Stdio => transport::serve_stdio(context).await?,
-        ServerMode::Headless => {
-            debug!(target: "apple_docs_core", "Headless mode: skipping transport loop")
-        }
-    }
+    let executor = executor::ToolExecutor::builder(context).build();
+    Ok(CoreRuntime { config, executor })
+}
 
-    Ok(())
+/// Placeholder entry point for the core server runtime.
+///
+/// Later phases will replace this stub with the full MCP event loop.
+pub async fn run(config: ServerConfig) -> Result<()> {
+    bootstrap(config).await?.serve().await
 }
 
 #[cfg(test)]
@@ -89,7 +114,10 @@ mod tests {
         let mut config = ServerConfig::default();
         config.cache_dir = Some(tmp.path().to_path_buf());
         config.mode = ServerMode::Headless;
-        let result = run(config).await;
+        let runtime = bootstrap(config).await.expect("bootstrap succeeds");
+        let result = runtime.serve().await;
         assert!(result.is_ok());
     }
 }
+
+pub use executor::{ToolExecutor, ToolExecutorBuilder, ToolExecutorError};

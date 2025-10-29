@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use apple_docs_core::{run, ServerConfig, ServerMode};
+use apple_docs_core::{bootstrap, ServerConfig, ServerMode};
 
 const CACHE_DIR_ENV: &str = "APPLEDOC_CACHE_DIR";
 const HEADLESS_ENV: &str = "APPLEDOC_HEADLESS";
@@ -20,7 +20,8 @@ pub async fn run_server() -> Result<()> {
         mode = ?config.mode,
         "Starting MCP server"
     );
-    run(config).await
+    let runtime = bootstrap(config).await?;
+    runtime.serve().await
 }
 
 fn resolve_cache_dir() -> Option<PathBuf> {

@@ -16,6 +16,7 @@ tracing = {workspace = true}
 regex = {workspace = true}
 futures = {workspace = true}
 once_cell = {workspace = true}
+thiserror = {workspace = true}
 
 [dev-dependencies]
 tempfile = {workspace = true}

@@ -4,6 +4,12 @@
 - Captured retrieval improvement opportunities for existing tools (discover_technologies, choose_technology, current_technology, search_symbols, get_documentation, how_do_i).
 - Follow-ups to evaluate: richer search ranking features in `search_symbols` (token proximity, synonyms), deeper metadata extraction in `get_documentation` (parameters, sample code from topic references), and dynamic fallback content for `how_do_i` when curated recipes are missing.
 
+2025-10-21 (Codex agent):
+- Refactored the core runtime to expose a reusable `ToolExecutor` with builder options and telemetry recording that feeds both the STDIO transport and the new CLI workflow.
+- Split the transport loop so JSON-RPC handling now delegates to the executor while preserving response semantics and error mapping.
+- Expanded the CLI into a multi-command utility (`serve`, `tools`, `cache`, `telemetry`, `completions`) with structured renderers (`json|markdown|table|text`), progress spinners, cache warmup/status management, and telemetry inspection.
+- Added unit tests for the executor scaffold, updated the workspace to derive debug traits needed for assertions, and refreshed the README with shell-first usage guidance.
+
 ## Multiphase Retrieval Enhancement Plan
 - Phase 1 – Instrumentation & Benchmarks *(Completed 2025-10-20 19:05Z · Owner: Codex agent)*  
   - Capture latency/precision telemetry for each tool call path and define baseline KPIs (match density, snippet coverage).

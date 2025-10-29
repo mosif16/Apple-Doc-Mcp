@@ -34,6 +34,42 @@ For local development you can run the server directly with:
 cargo run -p apple-docs-cli
 ```
 
+## CLI Usage
+
+The CLI now exposes dedicated subcommands so you can script documentation lookups without wiring up an MCP client first:
+
+```bash
+# Run the JSON-RPC transport (existing MCP integration)
+apple-docs serve
+
+# Inspect available tools with structured table output (default format = markdown)
+apple-docs tools list --format table
+
+# Execute a tool directly from the shell
+apple-docs tools call search_symbols \
+  --arguments '{"query": "tab view layout"}' --format json
+
+# Leverage argument files for more complex payloads
+apple-docs tools call get_documentation --arguments @payload.json
+
+# Monitor recent tool activity
+apple-docs telemetry --limit 10 --format table
+
+# Review and hydrate the on-disk cache before going offline
+apple-docs cache status
+apple-docs cache warmup --frameworks SwiftUI --frameworks UIKit --refresh
+apple-docs cache clear-memory
+```
+
+Global flags help tune accessibility and automation:
+
+- `--format json|markdown|table|text` switches between renderer styles.
+- `--quiet` suppresses human-oriented messaging for scripts.
+- `--no-color` and `--no-progress` disable ANSI styling and spinners.
+- `--cache-dir <path>` overrides `APPLEDOC_CACHE_DIR` for temporary workspaces.
+
+Progress spinners appear for long-running operations (framework warmups, remote tool calls) and automatically collapse into concise status lines when finished.
+
 ## 🔄 Typical Workflow
 
 1. Explore the catalogue:

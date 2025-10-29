@@ -2,7 +2,25 @@
   "symbol_hits": {
     "Fallback Recipe": [
       "agents.md"
+    ],
+    "cache_dir": [
+      "apps/cli/src/main.rs",
+      "crates/apple-docs-core/tests/search.rs",
+      "crates/apple-docs-client/src/lib.rs"
+    ],
+    "refresh_technologies": [
+      "apps/cli/src/main.rs",
+      "crates/apple-docs-client/src/lib.rs"
+    ],
+    "clear_memory_cache": [
+      "crates/apple-docs-client/src/lib.rs",
+      "apps/cli/src/main.rs"
     ]
   },
-  "directory_scores": {}
+  "directory_scores": {
+    "crates/apple-docs-client/src": 9,
+    "crates/apple-docs-core/tests": 6,
+    "apps/cli/src": 6,
+    "crates/apple-docs-mcp/src": 3
+  }
 }
