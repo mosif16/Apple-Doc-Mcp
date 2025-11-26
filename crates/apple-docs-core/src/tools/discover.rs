@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use apple_docs_client::types::{extract_text, Technology};
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -18,7 +19,124 @@ struct Args {
     page: Option<usize>,
     #[serde(rename = "pageSize")]
     page_size: Option<usize>,
+    category: Option<String>,
+    #[serde(rename = "sortBy")]
+    sort_by: Option<String>,
 }
+
+/// Technology categories for filtering
+static CATEGORIES: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
+    HashMap::from([
+        (
+            "ui",
+            vec![
+                "swiftui",
+                "uikit",
+                "appkit",
+                "watchkit",
+                "tvuikit",
+                "widgetkit",
+                "activitykit",
+            ],
+        ),
+        (
+            "data",
+            vec![
+                "foundation",
+                "coredata",
+                "swiftdata",
+                "cloudkit",
+                "combine",
+                "observation",
+            ],
+        ),
+        (
+            "network",
+            vec![
+                "network",
+                "urlsession",
+                "multipeerconnectivity",
+                "networkextension",
+            ],
+        ),
+        (
+            "media",
+            vec![
+                "avfoundation",
+                "avkit",
+                "coremedia",
+                "coreimage",
+                "coregraphics",
+                "metal",
+                "realitykit",
+                "arkit",
+                "scenekit",
+                "spritekit",
+                "vision",
+                "photosui",
+                "photokit",
+            ],
+        ),
+        (
+            "system",
+            vec![
+                "security",
+                "corelocation",
+                "mapkit",
+                "eventkit",
+                "contacts",
+                "usernotifications",
+                "backgroundtasks",
+                "storekit",
+                "gamekit",
+            ],
+        ),
+        (
+            "accessibility",
+            vec!["accessibility", "voiceover", "assistiveaccess"],
+        ),
+        ("testing", vec!["xctest", "xctestui", "testing"]),
+        (
+            "developer",
+            vec!["xcode", "instruments", "swift", "objectivec", "playground"],
+        ),
+    ])
+});
+
+/// Popularity/relevance scores for common frameworks
+static POPULARITY: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
+    HashMap::from([
+        // Tier 1 - Most commonly searched
+        ("swiftui", 100),
+        ("uikit", 95),
+        ("foundation", 90),
+        ("combine", 85),
+        ("swift", 85),
+        // Tier 2 - Very common
+        ("coredata", 80),
+        ("cloudkit", 75),
+        ("avfoundation", 75),
+        ("mapkit", 75),
+        ("corelocation", 70),
+        // Tier 3 - Common
+        ("appkit", 65),
+        ("widgetkit", 65),
+        ("storekit", 65),
+        ("usernotifications", 60),
+        ("metal", 60),
+        ("arkit", 60),
+        ("realitykit", 55),
+        // Tier 4 - Specialized
+        ("watchkit", 50),
+        ("tvuikit", 45),
+        ("scenekit", 45),
+        ("spritekit", 45),
+        ("gamekit", 40),
+        ("vision", 50),
+        ("contacts", 40),
+        ("eventkit", 40),
+    ])
+});
 
 pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
@@ -28,7 +146,20 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string"},
+                    "query": {
+                        "type": "string",
+                        "description": "Filter by technology name or description"
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["ui", "data", "network", "media", "system", "accessibility", "testing", "developer"],
+                        "description": "Filter by category: ui (SwiftUI, UIKit), data (CoreData, CloudKit), network, media (AV, Metal), system (Location, Notifications), accessibility, testing, developer"
+                    },
+                    "sortBy": {
+                        "type": "string",
+                        "enum": ["alphabetical", "relevance"],
+                        "description": "Sort results: alphabetical (default) or relevance (most popular first)"
+                    },
                     "page": {"type": "number"},
                     "pageSize": {"type": "number"}
                 }
@@ -45,6 +176,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let page = args.page.unwrap_or(1).max(1);
     let page_size = args.page_size.unwrap_or(25).clamp(1, 100);
     let query_lower = args.query.as_ref().map(|q| q.to_lowercase());
+    let category_lower = args.category.as_ref().map(|c| c.to_lowercase());
+    let sort_by = args.sort_by.as_deref().unwrap_or("alphabetical");
 
     let technologies = context.client.get_technologies().await?;
     let mut frameworks: Vec<Technology> = technologies
@@ -53,6 +186,19 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         .filter(|tech| tech.kind == "symbol" && tech.role == "collection")
         .collect();
 
+    // Apply category filter
+    if let Some(category) = &category_lower {
+        if let Some(category_frameworks) = CATEGORIES.get(category.as_str()) {
+            frameworks.retain(|tech| {
+                let title_lower = tech.title.to_lowercase();
+                category_frameworks
+                    .iter()
+                    .any(|cf| title_lower.contains(cf))
+            });
+        }
+    }
+
+    // Apply query filter
     if let Some(query_lower) = &query_lower {
         frameworks.retain(|tech| {
             tech.title.to_lowercase().contains(query_lower)
@@ -62,7 +208,19 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         });
     }
 
-    frameworks.sort_by(|a, b| a.title.cmp(&b.title));
+    // Sort based on preference
+    match sort_by {
+        "relevance" => {
+            frameworks.sort_by(|a, b| {
+                let score_a = get_relevance_score(&a.title, &query_lower);
+                let score_b = get_relevance_score(&b.title, &query_lower);
+                score_b.cmp(&score_a).then_with(|| a.title.cmp(&b.title))
+            });
+        }
+        _ => {
+            frameworks.sort_by(|a, b| a.title.cmp(&b.title));
+        }
+    }
 
     let total_pages = (frameworks.len().max(1) + page_size - 1) / page_size;
     let current_page = page.min(total_pages);
@@ -79,26 +237,40 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         results: page_items.clone(),
     });
 
+    // Build filter description
+    let mut filter_parts = Vec::new();
+    if let Some(query) = &args.query {
+        filter_parts.push(format!("\"{}\"", query));
+    }
+    if let Some(category) = &args.category {
+        filter_parts.push(format!("category: {}", category));
+    }
+    let filter_desc = if filter_parts.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", filter_parts.join(", "))
+    };
+
     let mut lines = vec![
-        markdown::header(
-            1,
-            &format!(
-                "Discover Apple Technologies{}",
-                args.query
-                    .as_ref()
-                    .map(|query| format!(" (filtered by \"{}\")", query))
-                    .unwrap_or_default()
-            ),
-        ),
+        markdown::header(1, &format!("Discover Apple Technologies{}", filter_desc)),
         String::new(),
         markdown::bold("Matches", &frameworks.len().to_string()),
         markdown::bold(
             "Page",
             &format!("{} / {}", current_page, total_pages.max(1)),
         ),
+        markdown::bold("Sort", if sort_by == "relevance" { "by relevance" } else { "alphabetical" }),
         String::new(),
-        markdown::header(2, "Available Frameworks"),
     ];
+
+    // Show available categories hint when no filter applied
+    if args.query.is_none() && args.category.is_none() {
+        lines.push("*Tip: Filter by category: `discover_technologies { \"category\": \"ui\" }`*".to_string());
+        lines.push("*Categories: ui, data, network, media, system, accessibility, testing, developer*".to_string());
+        lines.push(String::new());
+    }
+
+    lines.push(markdown::header(2, "Available Frameworks"));
 
     for framework in &page_items {
         let description = extract_text(&framework.r#abstract);
@@ -170,9 +342,48 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         "designFlaggedOnPage": design_badged,
         "recipesOnPage": recipes_on_page,
         "query": args.query,
+        "category": args.category,
+        "sortBy": sort_by,
     });
 
     Ok(text_response(lines).with_metadata(metadata))
+}
+
+/// Calculate relevance score for a technology based on popularity and query match
+fn get_relevance_score(title: &str, query: &Option<String>) -> i32 {
+    let title_lower = title.to_lowercase();
+
+    // Base popularity score
+    let mut score = POPULARITY
+        .iter()
+        .find(|(name, _)| title_lower.contains(*name))
+        .map(|(_, s)| *s)
+        .unwrap_or(30); // Default score for unknown frameworks
+
+    // Query match boost
+    if let Some(q) = query {
+        let q_lower = q.to_lowercase();
+        if title_lower == q_lower {
+            score += 50; // Exact match
+        } else if title_lower.starts_with(&q_lower) {
+            score += 30; // Starts with query
+        } else if title_lower.contains(&q_lower) {
+            score += 15; // Contains query
+        }
+    }
+
+    // Design guidance availability boost
+    if design_guidance::has_primer_mapping_by_title(&title_lower) {
+        score += 5;
+    }
+
+    // Recipe availability boost
+    let recipe_count = knowledge::recipes_for(title).len();
+    if recipe_count > 0 {
+        score += recipe_count as i32 * 3;
+    }
+
+    score
 }
 
 fn build_pagination(query: Option<&str>, current: usize, total: usize) -> Vec<String> {

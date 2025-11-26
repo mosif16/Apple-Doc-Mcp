@@ -67,6 +67,77 @@ const GENERAL_FOUNDATION_TOPICS: &[&str] = &[
     "design/human-interface-guidelines/foundations",
 ];
 
+// Additional component mappings
+const PICKER_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/pickers",
+    "design/human-interface-guidelines/menus",
+];
+const MENU_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/menus",
+    "design/human-interface-guidelines/context-menus",
+];
+const SHEET_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/sheets",
+    "design/human-interface-guidelines/modality",
+];
+const ALERT_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/alerts",
+    "design/human-interface-guidelines/modality",
+];
+const PROGRESS_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/progress-indicators",
+    "design/human-interface-guidelines/feedback",
+];
+const SLIDER_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/sliders",
+    "design/human-interface-guidelines/inputs",
+];
+const STEPPER_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/steppers",
+    "design/human-interface-guidelines/inputs",
+];
+const IMAGE_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/images",
+    "design/human-interface-guidelines/icons",
+];
+const FORM_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/settings",
+    "design/human-interface-guidelines/inputs",
+];
+const SCROLL_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/scroll-views",
+    "design/human-interface-guidelines/layout",
+];
+const NAVIGATION_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/navigation-and-search",
+    "design/human-interface-guidelines/sidebars",
+];
+const POPOVER_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/popovers",
+    "design/human-interface-guidelines/modality",
+];
+const COLOR_TOPICS: &[&str] = &["design/human-interface-guidelines/color"];
+const GESTURE_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/gestures",
+    "design/human-interface-guidelines/inputs",
+];
+const ANIMATION_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/motion",
+    "design/human-interface-guidelines/feedback",
+];
+const STACK_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/layout",
+    "design/human-interface-guidelines/foundations",
+];
+const LABEL_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/labels",
+    "design/human-interface-guidelines/typography",
+];
+const LINK_TOPICS: &[&str] = &[
+    "design/human-interface-guidelines/buttons",
+    "design/human-interface-guidelines/color",
+];
+
 const SWIFTUI_PRIMERS: &[&str] = &[
     "design/human-interface-guidelines/layout",
     "design/human-interface-guidelines/typography",
@@ -134,12 +205,17 @@ static PRIMER_MAPPINGS: &[PrimerMapping] = &[
 ];
 
 static MAPPINGS: &[Mapping] = &[
+    // Text components
     Mapping {
         path_prefix: "/documentation/swiftui/textfield",
         topics: TEXT_FIELD_TOPICS,
     },
     Mapping {
         path_prefix: "/documentation/swiftui/texteditor",
+        topics: TEXT_FIELD_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/securefield",
         topics: TEXT_FIELD_TOPICS,
     },
     Mapping {
@@ -151,6 +227,11 @@ static MAPPINGS: &[Mapping] = &[
         topics: TEXT_TOPICS,
     },
     Mapping {
+        path_prefix: "/documentation/swiftui/label",
+        topics: LABEL_TOPICS,
+    },
+    // List/Collection components
+    Mapping {
         path_prefix: "/documentation/swiftui/list",
         topics: LIST_TOPICS,
     },
@@ -158,6 +239,27 @@ static MAPPINGS: &[Mapping] = &[
         path_prefix: "/documentation/swiftui/outlinegroup",
         topics: LIST_TOPICS,
     },
+    Mapping {
+        path_prefix: "/documentation/swiftui/foreach",
+        topics: LIST_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/lazyvstack",
+        topics: LIST_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/lazyvgrid",
+        topics: LIST_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/lazyhgrid",
+        topics: LIST_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/grid",
+        topics: LIST_TOPICS,
+    },
+    // Search components
     Mapping {
         path_prefix: "/documentation/swiftui/view/searchable",
         topics: SEARCH_TOPICS,
@@ -167,13 +269,100 @@ static MAPPINGS: &[Mapping] = &[
         topics: SEARCH_TOPICS,
     },
     Mapping {
+        path_prefix: "/documentation/swiftui/view/searchsuggestions",
+        topics: SEARCH_TOPICS,
+    },
+    // Button/Control components
+    Mapping {
         path_prefix: "/documentation/swiftui/button",
+        topics: BUTTON_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/editbutton",
+        topics: BUTTON_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/pastebutton",
         topics: BUTTON_TOPICS,
     },
     Mapping {
         path_prefix: "/documentation/swiftui/toggle",
         topics: TOGGLE_TOPICS,
     },
+    Mapping {
+        path_prefix: "/documentation/swiftui/link",
+        topics: LINK_TOPICS,
+    },
+    // Picker/Selection components
+    Mapping {
+        path_prefix: "/documentation/swiftui/picker",
+        topics: PICKER_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/datepicker",
+        topics: PICKER_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/colorpicker",
+        topics: PICKER_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/multidatepicker",
+        topics: PICKER_TOPICS,
+    },
+    // Menu components
+    Mapping {
+        path_prefix: "/documentation/swiftui/menu",
+        topics: MENU_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/contextmenu",
+        topics: MENU_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/contextmenu",
+        topics: MENU_TOPICS,
+    },
+    // Modal/Sheet components
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/sheet",
+        topics: SHEET_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/fullscreencover",
+        topics: SHEET_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/popover",
+        topics: POPOVER_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/alert",
+        topics: ALERT_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/confirmationdialog",
+        topics: ALERT_TOPICS,
+    },
+    // Progress/Feedback components
+    Mapping {
+        path_prefix: "/documentation/swiftui/progressview",
+        topics: PROGRESS_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/gauge",
+        topics: PROGRESS_TOPICS,
+    },
+    // Input components
+    Mapping {
+        path_prefix: "/documentation/swiftui/slider",
+        topics: SLIDER_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/stepper",
+        topics: STEPPER_TOPICS,
+    },
+    // Navigation components
     Mapping {
         path_prefix: "/documentation/swiftui/tabview",
         topics: TAB_TOPICS,
@@ -184,19 +373,113 @@ static MAPPINGS: &[Mapping] = &[
     },
     Mapping {
         path_prefix: "/documentation/swiftui/navigationstack",
-        topics: TOOLBAR_TOPICS,
+        topics: NAVIGATION_TOPICS,
     },
     Mapping {
         path_prefix: "/documentation/swiftui/navigationview",
-        topics: TOOLBAR_TOPICS,
+        topics: NAVIGATION_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/navigationlink",
+        topics: NAVIGATION_TOPICS,
     },
     Mapping {
         path_prefix: "/documentation/swiftui/view/toolbar",
         topics: TOOLBAR_TOPICS,
     },
     Mapping {
+        path_prefix: "/documentation/swiftui/toolbaritem",
+        topics: TOOLBAR_TOPICS,
+    },
+    // Layout components
+    Mapping {
+        path_prefix: "/documentation/swiftui/vstack",
+        topics: STACK_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/hstack",
+        topics: STACK_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/zstack",
+        topics: STACK_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/scrollview",
+        topics: SCROLL_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/scrollviewreader",
+        topics: SCROLL_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/form",
+        topics: FORM_TOPICS,
+    },
+    // Image components
+    Mapping {
+        path_prefix: "/documentation/swiftui/image",
+        topics: IMAGE_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/asyncimage",
+        topics: IMAGE_TOPICS,
+    },
+    // Accessibility
+    Mapping {
         path_prefix: "/documentation/swiftui/view/accessibility",
         topics: ACCESSIBILITY_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/accessibilitylabel",
+        topics: ACCESSIBILITY_TOPICS,
+    },
+    // Color
+    Mapping {
+        path_prefix: "/documentation/swiftui/color",
+        topics: COLOR_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/foregroundstyle",
+        topics: COLOR_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/backgroundstyle",
+        topics: COLOR_TOPICS,
+    },
+    // Gesture
+    Mapping {
+        path_prefix: "/documentation/swiftui/gesture",
+        topics: GESTURE_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/tapgesture",
+        topics: GESTURE_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/draggesture",
+        topics: GESTURE_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/longpressgesture",
+        topics: GESTURE_TOPICS,
+    },
+    // Animation
+    Mapping {
+        path_prefix: "/documentation/swiftui/animation",
+        topics: ANIMATION_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/view/animation",
+        topics: ANIMATION_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/withanimation",
+        topics: ANIMATION_TOPICS,
+    },
+    Mapping {
+        path_prefix: "/documentation/swiftui/transition",
+        topics: ANIMATION_TOPICS,
     },
 ];
 
@@ -241,6 +524,16 @@ pub fn has_primer_mapping(technology: &Technology) -> bool {
     !primer_topics_for_technology(technology).is_empty()
 }
 
+/// Check if a technology title has primer mappings (for relevance scoring)
+pub fn has_primer_mapping_by_title(title_lower: &str) -> bool {
+    PRIMER_MAPPINGS.iter().any(|mapping| {
+        mapping
+            .title_keyword
+            .map(|keyword| title_lower.contains(keyword))
+            .unwrap_or(false)
+    })
+}
+
 fn topics_for(path: &str, title: &str) -> Vec<&'static str> {
     let normalized_path = path.to_ascii_lowercase();
     let mut matches = Vec::new();
@@ -251,29 +544,168 @@ fn topics_for(path: &str, title: &str) -> Vec<&'static str> {
         }
     }
 
+    // Title-based fallback matching for components not matched by path
     if matches.is_empty() {
         let lowered_title = title.to_ascii_lowercase();
-        if lowered_title.contains("text field") || lowered_title.contains("textfield") {
+
+        // Text input components
+        if lowered_title.contains("text field")
+            || lowered_title.contains("textfield")
+            || lowered_title.contains("securefield")
+            || lowered_title.contains("texteditor")
+        {
             matches.extend_from_slice(TEXT_FIELD_TOPICS);
-        } else if lowered_title.contains("text") || lowered_title.contains("font") {
+        } else if lowered_title.contains("text")
+            || lowered_title.contains("font")
+            || lowered_title.contains("typography")
+        {
             matches.extend_from_slice(TEXT_TOPICS);
-        } else if lowered_title.contains("list") || lowered_title.contains("table") {
+        } else if lowered_title.contains("label") {
+            matches.extend_from_slice(LABEL_TOPICS);
+        }
+
+        // List/Collection components
+        if lowered_title.contains("list")
+            || lowered_title.contains("table")
+            || lowered_title.contains("grid")
+            || lowered_title.contains("foreach")
+            || lowered_title.contains("collection")
+        {
             matches.extend_from_slice(LIST_TOPICS);
-        } else if lowered_title.contains("search") {
+        }
+
+        // Search
+        if lowered_title.contains("search") || lowered_title.contains("filter") {
             matches.extend_from_slice(SEARCH_TOPICS);
-        } else if lowered_title.contains("button") {
+        }
+
+        // Buttons and controls
+        if lowered_title.contains("button") || lowered_title.contains("action") {
             matches.extend_from_slice(BUTTON_TOPICS);
-        } else if lowered_title.contains("toggle") || lowered_title.contains("switch") {
+        }
+        if lowered_title.contains("toggle") || lowered_title.contains("switch") {
             matches.extend_from_slice(TOGGLE_TOPICS);
-        } else if lowered_title.contains("tab") {
+        }
+        if lowered_title.contains("link") && !lowered_title.contains("navigation") {
+            matches.extend_from_slice(LINK_TOPICS);
+        }
+
+        // Pickers
+        if lowered_title.contains("picker")
+            || lowered_title.contains("datepicker")
+            || lowered_title.contains("colorpicker")
+        {
+            matches.extend_from_slice(PICKER_TOPICS);
+        }
+
+        // Menus
+        if lowered_title.contains("menu") || lowered_title.contains("contextmenu") {
+            matches.extend_from_slice(MENU_TOPICS);
+        }
+
+        // Modal presentations
+        if lowered_title.contains("sheet") || lowered_title.contains("fullscreen") {
+            matches.extend_from_slice(SHEET_TOPICS);
+        }
+        if lowered_title.contains("alert") || lowered_title.contains("dialog") {
+            matches.extend_from_slice(ALERT_TOPICS);
+        }
+        if lowered_title.contains("popover") || lowered_title.contains("tooltip") {
+            matches.extend_from_slice(POPOVER_TOPICS);
+        }
+
+        // Progress and feedback
+        if lowered_title.contains("progress")
+            || lowered_title.contains("gauge")
+            || lowered_title.contains("indicator")
+        {
+            matches.extend_from_slice(PROGRESS_TOPICS);
+        }
+
+        // Input controls
+        if lowered_title.contains("slider") || lowered_title.contains("range") {
+            matches.extend_from_slice(SLIDER_TOPICS);
+        }
+        if lowered_title.contains("stepper") || lowered_title.contains("increment") {
+            matches.extend_from_slice(STEPPER_TOPICS);
+        }
+
+        // Navigation
+        if lowered_title.contains("tab") || lowered_title.contains("tabview") {
             matches.extend_from_slice(TAB_TOPICS);
-        } else if lowered_title.contains("split") || lowered_title.contains("column") {
+        }
+        if lowered_title.contains("split") || lowered_title.contains("column") {
             matches.extend_from_slice(SPLIT_TOPICS);
-        } else if lowered_title.contains("accessibility") {
+        }
+        if lowered_title.contains("navigation")
+            || lowered_title.contains("router")
+            || lowered_title.contains("stack")
+        {
+            matches.extend_from_slice(NAVIGATION_TOPICS);
+        }
+        if lowered_title.contains("toolbar") || lowered_title.contains("bar") {
+            matches.extend_from_slice(TOOLBAR_TOPICS);
+        }
+
+        // Layout
+        if lowered_title.contains("scroll") || lowered_title.contains("scrollview") {
+            matches.extend_from_slice(SCROLL_TOPICS);
+        }
+        if lowered_title.contains("form") || lowered_title.contains("settings") {
+            matches.extend_from_slice(FORM_TOPICS);
+        }
+        if lowered_title.contains("stack")
+            || lowered_title.contains("vstack")
+            || lowered_title.contains("hstack")
+            || lowered_title.contains("zstack")
+        {
+            matches.extend_from_slice(STACK_TOPICS);
+        }
+
+        // Images
+        if lowered_title.contains("image")
+            || lowered_title.contains("photo")
+            || lowered_title.contains("icon")
+        {
+            matches.extend_from_slice(IMAGE_TOPICS);
+        }
+
+        // Color
+        if lowered_title.contains("color")
+            || lowered_title.contains("tint")
+            || lowered_title.contains("foreground")
+            || lowered_title.contains("background")
+        {
+            matches.extend_from_slice(COLOR_TOPICS);
+        }
+
+        // Gestures
+        if lowered_title.contains("gesture")
+            || lowered_title.contains("tap")
+            || lowered_title.contains("drag")
+            || lowered_title.contains("swipe")
+        {
+            matches.extend_from_slice(GESTURE_TOPICS);
+        }
+
+        // Animation
+        if lowered_title.contains("animation")
+            || lowered_title.contains("transition")
+            || lowered_title.contains("motion")
+        {
+            matches.extend_from_slice(ANIMATION_TOPICS);
+        }
+
+        // Accessibility
+        if lowered_title.contains("accessibility")
+            || lowered_title.contains("voiceover")
+            || lowered_title.contains("a11y")
+        {
             matches.extend_from_slice(ACCESSIBILITY_TOPICS);
         }
     }
 
+    // General fallback for SwiftUI paths with no specific match
     if matches.is_empty() && normalized_path.contains("/swiftui/") {
         matches.extend_from_slice(GENERAL_FOUNDATION_TOPICS);
     }
