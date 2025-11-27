@@ -323,6 +323,388 @@ static KNOWLEDGE: Lazy<HashMap<&'static str, KnowledgeEntry>> = Lazy::new(|| {
             snippet: Some(UIKIT_UITEXTFIELD_SNIPPET),
         },
     );
+
+    // Additional SwiftUI entries
+    map.insert(
+        "swiftui::navigationstack",
+        Entry {
+            quick_tip: Some("Use NavigationStack for value-based navigation with type-safe destinations."),
+            related: &[
+                Related {
+                    title: "NavigationLink",
+                    path: "/documentation/swiftui/navigationlink",
+                    note: "Create links that push views onto the stack.",
+                },
+                Related {
+                    title: "navigationDestination(for:destination:)",
+                    path: "/documentation/swiftui/view/navigationdestination(for:destination:)",
+                    note: "Define destinations for value-based navigation.",
+                },
+                Related {
+                    title: "NavigationPath",
+                    path: "/documentation/swiftui/navigationpath",
+                    note: "Store navigation state for programmatic control.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UINavigationController",
+                    path: "/documentation/uikit/uinavigationcontroller",
+                    note: "Use when embedding SwiftUI in UIKit navigation hierarchies.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@State private var path = NavigationPath()\n\nNavigationStack(path: $path) {\n    List(items) { item in\n        NavigationLink(value: item) {\n            Text(item.title)\n        }\n    }\n    .navigationDestination(for: Item.self) { item in\n        DetailView(item: item)\n    }\n}",
+                caption: Some("Programmatic navigation with type-safe destinations."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::tabview",
+        Entry {
+            quick_tip: Some("Use TabView with selection binding for programmatic tab switching."),
+            related: &[
+                Related {
+                    title: "tabItem(_:)",
+                    path: "/documentation/swiftui/view/tabitem(_:)",
+                    note: "Configure the tab bar item for each tab.",
+                },
+                Related {
+                    title: "badge(_:)",
+                    path: "/documentation/swiftui/view/badge(_:)",
+                    note: "Add notification badges to tab items.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UITabBarController",
+                    path: "/documentation/uikit/uitabbarcontroller",
+                    note: "Use for UIKit-based tab navigation.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@State private var selectedTab = 0\n\nTabView(selection: $selectedTab) {\n    HomeView()\n        .tabItem { Label(\"Home\", systemImage: \"house\") }\n        .tag(0)\n    SettingsView()\n        .tabItem { Label(\"Settings\", systemImage: \"gear\") }\n        .tag(1)\n}",
+                caption: Some("Tab-based navigation with programmatic selection."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::picker",
+        Entry {
+            quick_tip: Some("Choose picker style based on context: wheel for dates, menu for compact options."),
+            related: &[
+                Related {
+                    title: "pickerStyle(_:)",
+                    path: "/documentation/swiftui/view/pickerstyle(_:)",
+                    note: "Customize picker appearance: menu, wheel, segmented, inline.",
+                },
+                Related {
+                    title: "DatePicker",
+                    path: "/documentation/swiftui/datepicker",
+                    note: "Specialized picker for date and time selection.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UIPickerView",
+                    path: "/documentation/uikit/uipickerview",
+                    note: "UIKit equivalent for wheel-style pickers.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@State private var selection = \"Red\"\nlet colors = [\"Red\", \"Green\", \"Blue\"]\n\nPicker(\"Color\", selection: $selection) {\n    ForEach(colors, id: \\.self) { color in\n        Text(color).tag(color)\n    }\n}\n.pickerStyle(.menu)",
+                caption: Some("Menu-style picker for compact selection."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::sheet",
+        Entry {
+            quick_tip: Some("Use sheet for modal presentations, fullScreenCover for immersive experiences."),
+            related: &[
+                Related {
+                    title: "presentationDetents(_:)",
+                    path: "/documentation/swiftui/view/presentationdetents(_:)",
+                    note: "Control sheet height with medium, large, or custom detents.",
+                },
+                Related {
+                    title: "interactiveDismissDisabled(_:)",
+                    path: "/documentation/swiftui/view/interactivedismissdisabled(_:)",
+                    note: "Prevent accidental dismiss during important tasks.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UISheetPresentationController",
+                    path: "/documentation/uikit/uisheetpresentationcontroller",
+                    note: "UIKit sheet with detent support.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@State private var showSettings = false\n\nButton(\"Settings\") { showSettings = true }\n.sheet(isPresented: $showSettings) {\n    SettingsView()\n        .presentationDetents([.medium, .large])\n        .presentationDragIndicator(.visible)\n}",
+                caption: Some("Present a sheet with multiple height options."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::asyncimage",
+        Entry {
+            quick_tip: Some("Always provide placeholder and error states for network images."),
+            related: &[
+                Related {
+                    title: "Image",
+                    path: "/documentation/swiftui/image",
+                    note: "Use for local assets and SF Symbols.",
+                },
+                Related {
+                    title: "resizable()",
+                    path: "/documentation/swiftui/image/resizable(capinsets:resizingmode:)",
+                    note: "Make images resizable before applying frame modifiers.",
+                },
+            ],
+            integration: &[],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "AsyncImage(url: imageURL) { phase in\n    switch phase {\n    case .empty:\n        ProgressView()\n    case .success(let image):\n        image.resizable().aspectRatio(contentMode: .fit)\n    case .failure:\n        Image(systemName: \"photo\")\n            .foregroundStyle(.secondary)\n    @unknown default:\n        EmptyView()\n    }\n}",
+                caption: Some("Handle all loading states for remote images."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::progressview",
+        Entry {
+            quick_tip: Some("Use determinate progress for known durations, indeterminate for unknown."),
+            related: &[
+                Related {
+                    title: "progressViewStyle(_:)",
+                    path: "/documentation/swiftui/view/progressviewstyle(_:)",
+                    note: "Choose linear or circular styles.",
+                },
+                Related {
+                    title: "Gauge",
+                    path: "/documentation/swiftui/gauge",
+                    note: "Display values within a range with more styling options.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UIProgressView",
+                    path: "/documentation/uikit/uiprogressview",
+                    note: "UIKit progress bar.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@State private var progress = 0.5\n\nProgressView(value: progress) {\n    Text(\"Downloading...\")\n} currentValueLabel: {\n    Text(\"\\(Int(progress * 100))%\")\n}",
+                caption: Some("Determinate progress with labels."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::form",
+        Entry {
+            quick_tip: Some("Use Form for settings screens; it adapts styling per platform."),
+            related: &[
+                Related {
+                    title: "Section",
+                    path: "/documentation/swiftui/section",
+                    note: "Group related form controls with headers and footers.",
+                },
+                Related {
+                    title: "LabeledContent",
+                    path: "/documentation/swiftui/labeledcontent",
+                    note: "Display read-only information in form rows.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UITableView",
+                    path: "/documentation/uikit/uitableview",
+                    note: "UIKit grouped table style for settings.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "Form {\n    Section(\"Account\") {\n        TextField(\"Username\", text: $username)\n        SecureField(\"Password\", text: $password)\n    }\n    Section(\"Preferences\") {\n        Toggle(\"Notifications\", isOn: $notifications)\n        Picker(\"Theme\", selection: $theme) {\n            Text(\"Light\").tag(0)\n            Text(\"Dark\").tag(1)\n        }\n    }\n}",
+                caption: Some("Settings form with sections and controls."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::alert",
+        Entry {
+            quick_tip: Some("Use confirmationDialog for destructive actions, alert for informational messages."),
+            related: &[
+                Related {
+                    title: "confirmationDialog(_:isPresented:titleVisibility:actions:message:)",
+                    path: "/documentation/swiftui/view/confirmationdialog(_:ispresented:titlevisibility:actions:message:)",
+                    note: "Action sheet style for destructive operations.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UIAlertController",
+                    path: "/documentation/uikit/uialertcontroller",
+                    note: "UIKit alert and action sheet presentations.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@State private var showAlert = false\n\nButton(\"Delete\") { showAlert = true }\n.alert(\"Delete Item?\", isPresented: $showAlert) {\n    Button(\"Cancel\", role: .cancel) { }\n    Button(\"Delete\", role: .destructive) {\n        deleteItem()\n    }\n} message: {\n    Text(\"This action cannot be undone.\")\n}",
+                caption: Some("Destructive action confirmation alert."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::gesture",
+        Entry {
+            quick_tip: Some("Combine gestures with simultaneousGesture or sequenced for complex interactions."),
+            related: &[
+                Related {
+                    title: "DragGesture",
+                    path: "/documentation/swiftui/draggesture",
+                    note: "Track drag position and velocity.",
+                },
+                Related {
+                    title: "MagnificationGesture",
+                    path: "/documentation/swiftui/magnificationgesture",
+                    note: "Handle pinch-to-zoom interactions.",
+                },
+                Related {
+                    title: "RotationGesture",
+                    path: "/documentation/swiftui/rotationgesture",
+                    note: "Track two-finger rotation.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UIGestureRecognizer",
+                    path: "/documentation/uikit/uigesturerecognizer",
+                    note: "UIKit gesture recognizer base class.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@State private var offset = CGSize.zero\n\nCircle()\n    .fill(.blue)\n    .frame(width: 100, height: 100)\n    .offset(offset)\n    .gesture(\n        DragGesture()\n            .onChanged { value in\n                offset = value.translation\n            }\n            .onEnded { _ in\n                withAnimation { offset = .zero }\n            }\n    )",
+                caption: Some("Draggable view with spring-back animation."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::animation",
+        Entry {
+            quick_tip: Some("Use withAnimation for state changes, animation modifier for view-specific timing."),
+            related: &[
+                Related {
+                    title: "withAnimation(_:_:)",
+                    path: "/documentation/swiftui/withanimation(_:_:)",
+                    note: "Animate state changes with a timing curve.",
+                },
+                Related {
+                    title: "transition(_:)",
+                    path: "/documentation/swiftui/view/transition(_:)",
+                    note: "Customize how views appear and disappear.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UIView.animate",
+                    path: "/documentation/uikit/uiview/1622418-animate",
+                    note: "UIKit block-based animations.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@State private var isExpanded = false\n\nVStack {\n    Button(\"Toggle\") {\n        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {\n            isExpanded.toggle()\n        }\n    }\n    if isExpanded {\n        Text(\"Expanded content\")\n            .transition(.move(edge: .top).combined(with: .opacity))\n    }\n}",
+                caption: Some("Spring animation with combined transitions."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::menu",
+        Entry {
+            quick_tip: Some("Use Menu for compact action lists, contextMenu for long-press actions."),
+            related: &[
+                Related {
+                    title: "contextMenu(menuItems:)",
+                    path: "/documentation/swiftui/view/contextmenu(menuitems:)",
+                    note: "Add long-press menu to any view.",
+                },
+                Related {
+                    title: "Button",
+                    path: "/documentation/swiftui/button",
+                    note: "Menu items are buttons with optional roles.",
+                },
+            ],
+            integration: &[
+                Link {
+                    framework: "UIKit",
+                    title: "UIMenu",
+                    path: "/documentation/uikit/uimenu",
+                    note: "UIKit hierarchical menu system.",
+                },
+            ],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "Menu(\"Actions\") {\n    Button(\"Copy\", action: copyItem)\n    Button(\"Share\", action: shareItem)\n    Divider()\n    Button(\"Delete\", role: .destructive, action: deleteItem)\n}",
+                caption: Some("Dropdown menu with destructive action."),
+            }),
+        },
+    );
+
+    map.insert(
+        "swiftui::observable",
+        Entry {
+            quick_tip: Some("Use @Observable macro for simple state; ObservableObject for complex dependencies."),
+            related: &[
+                Related {
+                    title: "@State",
+                    path: "/documentation/swiftui/state",
+                    note: "Local view state for simple values.",
+                },
+                Related {
+                    title: "@Bindable",
+                    path: "/documentation/swiftui/bindable",
+                    note: "Create bindings to Observable properties.",
+                },
+                Related {
+                    title: "@Environment",
+                    path: "/documentation/swiftui/environment",
+                    note: "Access shared data through the environment.",
+                },
+            ],
+            integration: &[],
+            snippet: Some(Snippet {
+                language: "swift",
+                code: "@Observable\nclass UserSettings {\n    var username = \"\"\n    var notificationsEnabled = true\n}\n\nstruct SettingsView: View {\n    @Bindable var settings: UserSettings\n    \n    var body: some View {\n        Form {\n            TextField(\"Username\", text: $settings.username)\n            Toggle(\"Notifications\", isOn: $settings.notificationsEnabled)\n        }\n    }\n}",
+                caption: Some("Observable model with bindable properties."),
+            }),
+        },
+    );
+
     map
 });
 

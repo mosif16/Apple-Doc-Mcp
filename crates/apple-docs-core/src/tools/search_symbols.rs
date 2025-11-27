@@ -69,20 +69,196 @@ struct RankedEntry {
 
 static QUERY_SYNONYMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
     HashMap::from([
-        ("list", vec!["table", "collection", "outline"]),
-        ("table", vec!["list", "grid"]),
-        ("grid", vec!["collection", "layout"]),
-        ("text", vec!["label", "string"]),
-        ("textfield", vec!["input", "formfield", "textinput"]),
-        ("field", vec!["input", "textfield"]),
-        ("search", vec!["find", "lookup", "query"]),
-        ("toolbar", vec!["navigationbar", "actions", "bar"]),
-        ("tab", vec!["segmented", "page"]),
-        ("navigation", vec!["routing", "stack"]),
-        ("button", vec!["control", "action"]),
-        ("toggle", vec!["switch"]),
-        ("alert", vec!["dialog", "notification"]),
-        ("link", vec!["url", "address"]),
+        // List/Collection family
+        ("list", vec!["table", "collection", "outline", "foreach", "lazyvstack"]),
+        ("table", vec!["list", "grid", "datagrid"]),
+        ("grid", vec!["collection", "layout", "lazygrid", "lazyhgrid", "lazyvgrid"]),
+        ("collection", vec!["list", "grid", "foreach"]),
+        ("foreach", vec!["list", "collection", "loop"]),
+
+        // Text family
+        ("text", vec!["label", "string", "typography", "font"]),
+        ("label", vec!["text", "string", "caption"]),
+        ("textfield", vec!["input", "formfield", "textinput", "edittext", "entry"]),
+        ("field", vec!["input", "textfield", "entry"]),
+        ("texteditor", vec!["textarea", "multiline", "textview"]),
+        ("string", vec!["text", "label", "attributedstring"]),
+
+        // Search family
+        ("search", vec!["find", "lookup", "query", "searchable", "filter"]),
+        ("searchable", vec!["search", "filter", "find"]),
+        ("filter", vec!["search", "predicate", "query"]),
+
+        // Navigation family
+        ("toolbar", vec!["navigationbar", "actions", "bar", "menu"]),
+        ("tab", vec!["segmented", "page", "tabview", "tabbar"]),
+        ("tabview", vec!["tab", "page", "segmented"]),
+        ("navigation", vec!["routing", "stack", "navigator", "navigationstack", "navigationview"]),
+        ("navigationstack", vec!["navigation", "stack", "router"]),
+        ("navigationsplitview", vec!["sidebar", "splitview", "master", "detail"]),
+        ("sidebar", vec!["navigationsplitview", "menu", "drawer"]),
+
+        // Button/Control family
+        ("button", vec!["control", "action", "tap", "press", "click"]),
+        ("toggle", vec!["switch", "checkbox", "boolean"]),
+        ("switch", vec!["toggle", "checkbox"]),
+        ("picker", vec!["dropdown", "select", "menu", "selection", "wheel"]),
+        ("menu", vec!["picker", "dropdown", "contextmenu", "popover"]),
+        ("slider", vec!["range", "progress", "scrubber"]),
+        ("stepper", vec!["increment", "counter", "spinner"]),
+
+        // Alert/Modal family
+        ("alert", vec!["dialog", "notification", "popup", "message"]),
+        ("sheet", vec!["modal", "presentation", "bottomsheet", "popover"]),
+        ("modal", vec!["sheet", "presentation", "dialog", "fullscreen"]),
+        ("popover", vec!["tooltip", "popup", "menu", "contextmenu"]),
+
+        // Link/URL family
+        ("link", vec!["url", "address", "href", "navigation"]),
+        ("url", vec!["link", "address", "uri"]),
+
+        // Image/Media family
+        ("image", vec!["photo", "picture", "icon", "graphic", "asyncimage"]),
+        ("asyncimage", vec!["image", "remote", "url", "photo"]),
+        ("icon", vec!["symbol", "sfsymbol", "image", "glyph"]),
+        ("symbol", vec!["icon", "sfsymbol", "glyph"]),
+
+        // Layout family
+        ("stack", vec!["vstack", "hstack", "zstack", "layout", "container"]),
+        ("vstack", vec!["vertical", "column", "stack"]),
+        ("hstack", vec!["horizontal", "row", "stack"]),
+        ("zstack", vec!["overlay", "layer", "stack"]),
+        ("spacer", vec!["padding", "gap", "margin"]),
+        ("frame", vec!["size", "bounds", "dimension", "layout"]),
+        ("padding", vec!["spacing", "margin", "inset"]),
+
+        // State/Data family
+        ("state", vec!["binding", "observable", "published", "data"]),
+        ("binding", vec!["state", "twoway", "observable"]),
+        ("observable", vec!["state", "published", "observed", "observableobject"]),
+        ("environment", vec!["environmentobject", "injection", "dependency"]),
+
+        // Animation family
+        ("animation", vec!["transition", "animate", "motion", "effect"]),
+        ("transition", vec!["animation", "enter", "exit", "appear"]),
+        ("gesture", vec!["tap", "drag", "swipe", "touch", "interaction"]),
+
+        // Form family
+        ("form", vec!["settings", "preferences", "input", "section"]),
+        ("section", vec!["group", "form", "container"]),
+
+        // Color/Style family
+        ("color", vec!["tint", "foreground", "background", "fill"]),
+        ("style", vec!["modifier", "appearance", "theme"]),
+
+        // View lifecycle
+        ("onappear", vec!["viewdidappear", "load", "appear", "lifecycle"]),
+        ("task", vec!["async", "await", "background", "concurrent"]),
+
+        // Accessibility
+        ("accessibility", vec!["a11y", "voiceover", "assistive", "label"]),
+        ("voiceover", vec!["accessibility", "screenreader", "assistive"]),
+    ])
+});
+
+/// Common abbreviations expanded to full terms for better matching
+static ABBREVIATIONS: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
+    HashMap::from([
+        // Common UI abbreviations
+        ("nav", "navigation"),
+        ("btn", "button"),
+        ("img", "image"),
+        ("txt", "text"),
+        ("lbl", "label"),
+        ("bg", "background"),
+        ("fg", "foreground"),
+        ("ctx", "context"),
+        ("cfg", "config"),
+        ("config", "configuration"),
+        ("prefs", "preferences"),
+        ("pref", "preference"),
+        ("auth", "authentication"),
+        ("async", "asynchronous"),
+        ("sync", "synchronous"),
+        ("init", "initialization"),
+        ("deinit", "deinitialization"),
+        ("func", "function"),
+        ("fn", "function"),
+        ("prop", "property"),
+        ("attr", "attribute"),
+        ("attrs", "attributes"),
+        ("elem", "element"),
+        ("elems", "elements"),
+        ("comp", "component"),
+        ("comps", "components"),
+        ("param", "parameter"),
+        ("params", "parameters"),
+        ("arg", "argument"),
+        ("args", "arguments"),
+        ("val", "value"),
+        ("vals", "values"),
+        ("var", "variable"),
+        ("vars", "variables"),
+        ("obj", "object"),
+        ("objs", "objects"),
+        ("ref", "reference"),
+        ("refs", "references"),
+        ("ptr", "pointer"),
+        ("str", "string"),
+        ("int", "integer"),
+        ("bool", "boolean"),
+        ("num", "number"),
+        ("idx", "index"),
+        ("len", "length"),
+        ("cnt", "count"),
+        ("sz", "size"),
+        ("min", "minimum"),
+        ("max", "maximum"),
+        ("avg", "average"),
+        ("err", "error"),
+        ("errs", "errors"),
+        ("msg", "message"),
+        ("msgs", "messages"),
+        ("info", "information"),
+        ("desc", "description"),
+        ("docs", "documentation"),
+        ("doc", "documentation"),
+        ("spec", "specification"),
+        ("specs", "specifications"),
+        ("impl", "implementation"),
+        ("util", "utility"),
+        ("utils", "utilities"),
+        ("lib", "library"),
+        ("libs", "libraries"),
+        ("pkg", "package"),
+        ("pkgs", "packages"),
+        ("mod", "module"),
+        ("mods", "modules"),
+        ("env", "environment"),
+        ("src", "source"),
+        ("dst", "destination"),
+        ("dest", "destination"),
+        ("tmp", "temporary"),
+        ("temp", "temporary"),
+        ("prev", "previous"),
+        ("curr", "current"),
+        ("nxt", "next"),
+        // Apple/SwiftUI specific
+        ("hstack", "horizontalstack"),
+        ("vstack", "verticalstack"),
+        ("zstack", "depthstack"),
+        ("navstack", "navigationstack"),
+        ("navsplit", "navigationsplitview"),
+        ("tabbar", "tabview"),
+        ("sb", "storyboard"),
+        ("vc", "viewcontroller"),
+        ("vm", "viewmodel"),
+        ("ui", "userinterface"),
+        ("ux", "userexperience"),
+        ("sf", "sfsymbol"),
+        ("a11y", "accessibility"),
+        ("i18n", "internationalization"),
+        ("l10n", "localization"),
     ])
 });
 
@@ -667,6 +843,78 @@ struct MatchScore {
     synonym_hits: usize,
 }
 
+/// Symbol kind priority - higher values rank better for general searches
+fn symbol_kind_boost(kind: Option<&str>) -> i32 {
+    match kind.map(|k| k.to_lowercase()).as_deref() {
+        // Primary types - developers usually search for these first
+        Some("struct") | Some("class") | Some("protocol") | Some("actor") => 4,
+        // Views and important UI types
+        Some("view") | Some("typealias") => 3,
+        // Enums are often important for configuration
+        Some("enum") | Some("enumeration") => 3,
+        // Functions and methods
+        Some("func") | Some("method") | Some("function") | Some("init") => 2,
+        // Properties and variables
+        Some("property") | Some("var") | Some("let") | Some("variable") => 1,
+        // Type members
+        Some("case") | Some("associatedtype") => 1,
+        // Operators and extensions
+        Some("op") | Some("operator") | Some("extension") => 0,
+        // Unknown or other
+        _ => 0,
+    }
+}
+
+/// Calculate edit distance between two strings (Levenshtein distance)
+/// Returns None if distance exceeds max_distance for efficiency
+fn edit_distance(a: &str, b: &str, max_distance: usize) -> Option<usize> {
+    let a_len = a.len();
+    let b_len = b.len();
+
+    // Early exit if length difference exceeds max_distance
+    if a_len.abs_diff(b_len) > max_distance {
+        return None;
+    }
+
+    // For short strings, use exact matching
+    if a_len == 0 {
+        return if b_len <= max_distance { Some(b_len) } else { None };
+    }
+    if b_len == 0 {
+        return if a_len <= max_distance { Some(a_len) } else { None };
+    }
+
+    let mut prev_row: Vec<usize> = (0..=b_len).collect();
+    let mut curr_row: Vec<usize> = vec![0; b_len + 1];
+
+    for (i, a_char) in a.chars().enumerate() {
+        curr_row[0] = i + 1;
+        let mut min_in_row = curr_row[0];
+
+        for (j, b_char) in b.chars().enumerate() {
+            let cost = if a_char == b_char { 0 } else { 1 };
+            curr_row[j + 1] = (prev_row[j + 1] + 1)
+                .min(curr_row[j] + 1)
+                .min(prev_row[j] + cost);
+            min_in_row = min_in_row.min(curr_row[j + 1]);
+        }
+
+        // Early exit if minimum in row exceeds max_distance
+        if min_in_row > max_distance {
+            return None;
+        }
+
+        std::mem::swap(&mut prev_row, &mut curr_row);
+    }
+
+    let distance = prev_row[b_len];
+    if distance <= max_distance {
+        Some(distance)
+    } else {
+        None
+    }
+}
+
 fn score_entry(
     entry: &FrameworkIndexEntry,
     query: &QueryConfig,
@@ -689,6 +937,12 @@ fn score_entry(
         .as_deref()
         .unwrap_or_default()
         .to_lowercase();
+
+    // Strong boost for exact title match
+    if title_lower == query.raw {
+        score += 15;
+        matched_terms = query.term_count();
+    }
 
     for term in &query.terms {
         let mut term_score = 0;
@@ -719,13 +973,41 @@ fn score_entry(
             }
         }
 
+        // Typo tolerance: if no match found, try edit distance on title
+        if term_score == 0 && term.len() >= 3 {
+            // Only for terms 3+ chars
+            let max_typos = if term.len() <= 4 { 1 } else { 2 };
+            for token in &entry.tokens {
+                if token.len() >= 3 {
+                    if let Some(distance) = edit_distance(term, token, max_typos) {
+                        // Score based on edit distance
+                        term_score = match distance {
+                            0 => 6, // Exact (shouldn't happen, already matched above)
+                            1 => 3, // One typo
+                            2 => 1, // Two typos
+                            _ => 0,
+                        };
+                        if term_score > 0 {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         if term_score > 0 {
             matched_terms += 1;
             score += term_score;
         }
     }
 
+    // Boost for title containing the full query phrase
     if !query.raw.is_empty() && title_lower.contains(&query.raw) {
+        score += 5;
+    }
+
+    // Boost for title starting with the query
+    if !query.raw.is_empty() && title_lower.starts_with(&query.raw) {
         score += 3;
     }
 
@@ -735,16 +1017,23 @@ fn score_entry(
         }
     }
 
+    // Knowledge base boost
     if let Some(tech) = knowledge_tech {
         if let Some(title) = entry.reference.title.as_deref() {
             if knowledge::lookup(tech, title).is_some() {
-                score += 2;
+                score += 3;
             }
         }
     }
 
+    // All terms matched bonus
     if matched_terms == query.term_count() && query.term_count() > 0 {
-        score += 3;
+        score += 4;
+    }
+
+    // Symbol kind boost - promote types over properties
+    if score > 0 {
+        score += symbol_kind_boost(entry.reference.kind.as_deref());
     }
 
     if score > 0 {
@@ -1033,7 +1322,15 @@ fn prepare_query(raw: &str) -> QueryConfig {
     {
         let term = token.to_lowercase();
         if !terms.contains(&term) {
-            terms.push(term);
+            terms.push(term.clone());
+        }
+
+        // Expand abbreviations - add both the original and expanded form
+        if let Some(expanded) = ABBREVIATIONS.get(term.as_str()) {
+            let expanded_term = expanded.to_string();
+            if !terms.contains(&expanded_term) {
+                terms.push(expanded_term);
+            }
         }
     }
 
