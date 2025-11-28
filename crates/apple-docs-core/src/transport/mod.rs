@@ -134,7 +134,7 @@ async fn handle_request(context: Arc<AppContext>, request: RpcRequest) -> Option
         "initialize" => Some(RpcResponse::result(
             Some(id_value.clone()),
             json!({
-                "protocolVersion": "0.1.0",
+                "protocolVersion": "2024-11-05",
                 "serverInfo": {
                     "name": "apple-docs",
                     "version": env!("CARGO_PKG_VERSION"),

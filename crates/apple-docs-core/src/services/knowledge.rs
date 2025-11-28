@@ -761,6 +761,118 @@ static RECIPES: Lazy<Vec<RecipeDefinition>> = Lazy::new(|| {
         },
     ];
 
+    // SwiftUI Navigation references
+    const NAVIGATION_RECIPE_REFS: [Related; 3] = [
+        Related {
+            title: "NavigationStack",
+            path: "/documentation/swiftui/navigationstack",
+            note: "Container for push-based navigation.",
+        },
+        Related {
+            title: "navigationDestination(for:destination:)",
+            path: "/documentation/swiftui/view/navigationdestination(for:destination:)",
+            note: "Register destinations for value-based navigation.",
+        },
+        Related {
+            title: "NavigationPath",
+            path: "/documentation/swiftui/navigationpath",
+            note: "Type-erased path for programmatic navigation.",
+        },
+    ];
+
+    // SwiftUI Sheet references
+    const SHEET_RECIPE_REFS: [Related; 3] = [
+        Related {
+            title: "sheet(isPresented:onDismiss:content:)",
+            path: "/documentation/swiftui/view/sheet(ispresented:ondismiss:content:)",
+            note: "Present a modal sheet.",
+        },
+        Related {
+            title: "presentationDetents(_:)",
+            path: "/documentation/swiftui/view/presentationdetents(_:)",
+            note: "Control sheet height options.",
+        },
+        Related {
+            title: "fullScreenCover(isPresented:onDismiss:content:)",
+            path: "/documentation/swiftui/view/fullscreencover(ispresented:ondismiss:content:)",
+            note: "Present a full-screen modal.",
+        },
+    ];
+
+    // SwiftUI Data Flow references
+    const DATA_FLOW_RECIPE_REFS: [Related; 3] = [
+        Related {
+            title: "@Observable",
+            path: "/documentation/observation/observable()",
+            note: "Macro for creating observable models.",
+        },
+        Related {
+            title: "@State",
+            path: "/documentation/swiftui/state",
+            note: "Local view state for value types.",
+        },
+        Related {
+            title: "@Environment",
+            path: "/documentation/swiftui/environment",
+            note: "Access values from the environment.",
+        },
+    ];
+
+    // Foundation Models references
+    const FM_SESSION_REFS: [Related; 3] = [
+        Related {
+            title: "LanguageModelSession",
+            path: "/documentation/foundationmodels/languagemodelsession",
+            note: "Session for interacting with the language model.",
+        },
+        Related {
+            title: "SystemLanguageModel",
+            path: "/documentation/foundationmodels/systemlanguagemodel",
+            note: "Access the on-device language model.",
+        },
+        Related {
+            title: "GenerationOptions",
+            path: "/documentation/foundationmodels/generationoptions",
+            note: "Configure generation parameters.",
+        },
+    ];
+
+    const FM_STRUCTURED_REFS: [Related; 3] = [
+        Related {
+            title: "Generable",
+            path: "/documentation/foundationmodels/generable",
+            note: "Protocol for structured output types.",
+        },
+        Related {
+            title: "@Generable",
+            path: "/documentation/foundationmodels/generable()",
+            note: "Macro to make types generable.",
+        },
+        Related {
+            title: "GenerationOptions",
+            path: "/documentation/foundationmodels/generationoptions",
+            note: "Control generation behavior.",
+        },
+    ];
+
+    const FM_TOOLS_REFS: [Related; 3] = [
+        Related {
+            title: "Tool",
+            path: "/documentation/foundationmodels/tool",
+            note: "Protocol for defining callable tools.",
+        },
+        Related {
+            title: "ToolOutput",
+            path: "/documentation/foundationmodels/tooloutput",
+            note: "Result type for tool execution.",
+        },
+        Related {
+            title: "LanguageModelSession",
+            path: "/documentation/foundationmodels/languagemodelsession",
+            note: "Session that orchestrates tool calls.",
+        },
+    ];
+
     vec![
         Recipe {
             id: "swiftui-search-list",
@@ -819,6 +931,203 @@ static RECIPES: Lazy<Vec<RecipeDefinition>> = Lazy::new(|| {
                 "Adjust the search results view to react to both the text query and the selected scope.",
             ],
             references: &SCOPES_RECIPE_REFS,
+        },
+        // New SwiftUI recipes
+        Recipe {
+            id: "swiftui-navigation-stack",
+            technology: "swiftui",
+            title: "Set up NavigationStack with value-based navigation",
+            summary: "Create type-safe, programmatic navigation using NavigationStack and NavigationPath.",
+            keywords: &[
+                "how do i add navigation",
+                "create navigation",
+                "navigationstack",
+                "navigation stack",
+                "push view",
+                "programmatic navigation",
+            ],
+            steps: &[
+                "Create a NavigationStack as the root of your navigation hierarchy.",
+                "Define your data models that will drive navigation (they must be Hashable).",
+                "Use NavigationLink(value:) to create links that push values onto the stack.",
+                "Register destinations with navigationDestination(for:destination:) for each type.",
+                "Optionally bind a NavigationPath to @State for programmatic navigation control.",
+            ],
+            references: &NAVIGATION_RECIPE_REFS,
+        },
+        Recipe {
+            id: "swiftui-sheet-modal",
+            technology: "swiftui",
+            title: "Present a modal sheet with detents",
+            summary: "Show a sheet that can resize between medium and large heights.",
+            keywords: &[
+                "how do i show sheet",
+                "present sheet",
+                "modal sheet",
+                "bottom sheet",
+                "sheet detents",
+                "half sheet",
+            ],
+            steps: &[
+                "Create a @State Bool to control the sheet's presentation.",
+                "Attach .sheet(isPresented:content:) to a view in your hierarchy.",
+                "Inside the sheet content, apply .presentationDetents([.medium, .large]) for resizable heights.",
+                "Optionally add .presentationDragIndicator(.visible) for a grab handle.",
+                "Use .interactiveDismissDisabled() if you need to prevent swipe-to-dismiss.",
+            ],
+            references: &SHEET_RECIPE_REFS,
+        },
+        Recipe {
+            id: "swiftui-observable-data",
+            technology: "swiftui",
+            title: "Use @Observable for reactive data models",
+            summary: "Create observable models that automatically update views when properties change.",
+            keywords: &[
+                "how do i use observable",
+                "observable model",
+                "data model",
+                "state management",
+                "reactive data",
+                "bindable",
+            ],
+            steps: &[
+                "Mark your class with @Observable macro to enable automatic observation.",
+                "Declare properties as regular var - they're automatically tracked.",
+                "Pass the model to views directly or through @Environment.",
+                "Use @Bindable when you need two-way bindings to observable properties.",
+                "Views will automatically re-render when observed properties change.",
+            ],
+            references: &DATA_FLOW_RECIPE_REFS,
+        },
+        Recipe {
+            id: "swiftui-async-image",
+            technology: "swiftui",
+            title: "Load remote images with AsyncImage",
+            summary: "Display images from URLs with loading and error states.",
+            keywords: &[
+                "how do i load image",
+                "remote image",
+                "asyncimage",
+                "async image",
+                "url image",
+                "network image",
+            ],
+            steps: &[
+                "Create an AsyncImage with the URL of your remote image.",
+                "Use the phase-based initializer to handle loading, success, and failure states.",
+                "Show a ProgressView() during the .empty loading phase.",
+                "In the .success phase, apply resizable() and aspectRatio() to the image.",
+                "Provide a placeholder image for the .failure phase.",
+            ],
+            references: &[
+                Related {
+                    title: "AsyncImage",
+                    path: "/documentation/swiftui/asyncimage",
+                    note: "View that loads and displays remote images.",
+                },
+                Related {
+                    title: "AsyncImagePhase",
+                    path: "/documentation/swiftui/asyncimagephase",
+                    note: "Represents the loading state of an async image.",
+                },
+            ],
+        },
+        Recipe {
+            id: "swiftui-list-swipe",
+            technology: "swiftui",
+            title: "Add swipe actions to List rows",
+            summary: "Enable swipe-to-delete and custom swipe actions on list items.",
+            keywords: &[
+                "how do i add swipe",
+                "swipe actions",
+                "swipe to delete",
+                "list actions",
+                "row actions",
+            ],
+            steps: &[
+                "Create a List with ForEach to iterate over your data.",
+                "Apply .swipeActions(edge:allowsFullSwipe:content:) to each row.",
+                "Use edge: .trailing for delete actions (swipe left to reveal).",
+                "Use edge: .leading for secondary actions (swipe right to reveal).",
+                "Add Button views with appropriate roles (.destructive for delete).",
+            ],
+            references: &[
+                Related {
+                    title: "swipeActions(edge:allowsFullSwipe:content:)",
+                    path: "/documentation/swiftui/view/swipeactions(edge:allowsfullswipe:content:)",
+                    note: "Add swipe actions to list rows.",
+                },
+                Related {
+                    title: "List",
+                    path: "/documentation/swiftui/list",
+                    note: "Container for displaying rows of data.",
+                },
+            ],
+        },
+        // Foundation Models recipes
+        Recipe {
+            id: "fm-create-session",
+            technology: "foundation models",
+            title: "Create a language model session",
+            summary: "Initialize a session with the on-device language model for text generation.",
+            keywords: &[
+                "how do i create session",
+                "language model session",
+                "create session",
+                "start session",
+                "foundation models session",
+            ],
+            steps: &[
+                "Check model availability with SystemLanguageModel.default.availability.",
+                "Handle unavailable cases: .deviceNotEligible, .appleIntelligenceNotEnabled, .modelNotReady.",
+                "Create a LanguageModelSession with the default model when available.",
+                "Use session.respond(to:) to generate responses to prompts.",
+                "Handle the async response, which may be streamed or complete.",
+            ],
+            references: &FM_SESSION_REFS,
+        },
+        Recipe {
+            id: "fm-structured-output",
+            technology: "foundation models",
+            title: "Generate structured output with @Generable",
+            summary: "Get type-safe responses from the model using custom Swift types.",
+            keywords: &[
+                "how do i get structured output",
+                "structured output",
+                "generable",
+                "typed response",
+                "json output",
+                "parse response",
+            ],
+            steps: &[
+                "Define a struct and mark it with @Generable macro.",
+                "Include properties for each piece of data you want extracted.",
+                "Add descriptions to properties using @Guide for better results.",
+                "Use session.respond(to:generating:) with your Generable type.",
+                "Access the typed result directly from the response.",
+            ],
+            references: &FM_STRUCTURED_REFS,
+        },
+        Recipe {
+            id: "fm-tool-calling",
+            technology: "foundation models",
+            title: "Implement tool calling for the language model",
+            summary: "Let the model invoke your functions to perform actions or retrieve data.",
+            keywords: &[
+                "how do i add tool",
+                "tool calling",
+                "function calling",
+                "tools",
+                "model tools",
+            ],
+            steps: &[
+                "Define a struct conforming to Tool protocol for each capability.",
+                "Implement the call() method that performs the actual work.",
+                "Add parameter descriptions using @Guide for the model to understand usage.",
+                "Register tools when creating the session or in respond() call.",
+                "The model will invoke tools as needed and incorporate results.",
+            ],
+            references: &FM_TOOLS_REFS,
         },
     ]
 });

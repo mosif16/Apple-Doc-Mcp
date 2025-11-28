@@ -553,9 +553,25 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         .collect();
 
     let mut aggregate = Vec::new();
+    let mut skipped_frameworks = 0usize;
     for technology in &frameworks {
+        // Gracefully handle framework loading errors - skip broken frameworks
+        // instead of failing the entire search
+        let index = match ensure_global_framework_index(&context, technology).await {
+            Ok(idx) => idx,
+            Err(e) => {
+                warn!(
+                    target: "search_symbols.global",
+                    tech = %technology.title,
+                    "Skipping framework due to load error: {e:#}"
+                );
+                skipped_frameworks += 1;
+                continue;
+            }
+        };
+
         let mut matches = collect_matches(
-            &ensure_global_framework_index(&context, technology).await?,
+            &index,
             &args,
             &query,
             Some(technology.title.as_str()),
@@ -572,6 +588,15 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
                 synonym_hits: ranked.synonym_hits,
             });
         }
+    }
+
+    if skipped_frameworks > 0 {
+        debug!(
+            target: "search_symbols.global",
+            skipped = skipped_frameworks,
+            total = frameworks.len(),
+            "Some frameworks were skipped due to load errors"
+        );
     }
 
     aggregate.sort_by(|a, b| {
@@ -649,6 +674,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
             "designAnnotated": 0,
             "knowledgeAnnotated": 0,
             "technologiesScanned": frameworks.len(),
+            "technologiesSkipped": skipped_frameworks,
             "synonymsApplied": query.synonyms_applied(),
             "synonymMatches": 0,
             "fullMatchCount": 0,
@@ -771,6 +797,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         "knowledgeAnnotated": knowledge_hits,
         "designSectionsFetched": design_sections.len(),
         "technologiesScanned": frameworks.len(),
+        "technologiesSkipped": skipped_frameworks,
         "synonymsApplied": query.synonyms_applied(),
         "synonymMatches": synonym_match_total,
         "fullMatchCount": full_term_match_count,
@@ -847,15 +874,15 @@ struct MatchScore {
 fn symbol_kind_boost(kind: Option<&str>) -> i32 {
     match kind.map(|k| k.to_lowercase()).as_deref() {
         // Primary types - developers usually search for these first
-        Some("struct") | Some("class") | Some("protocol") | Some("actor") => 4,
+        Some("struct") | Some("class") | Some("protocol") | Some("actor") => 6,
         // Views and important UI types
-        Some("view") | Some("typealias") => 3,
+        Some("view") | Some("typealias") => 5,
         // Enums are often important for configuration
-        Some("enum") | Some("enumeration") => 3,
+        Some("enum") | Some("enumeration") => 4,
         // Functions and methods
-        Some("func") | Some("method") | Some("function") | Some("init") => 2,
+        Some("func") | Some("method") | Some("function") | Some("init") => 3,
         // Properties and variables
-        Some("property") | Some("var") | Some("let") | Some("variable") => 1,
+        Some("property") | Some("var") | Some("let") | Some("variable") => 2,
         // Type members
         Some("case") | Some("associatedtype") => 1,
         // Operators and extensions
@@ -863,6 +890,50 @@ fn symbol_kind_boost(kind: Option<&str>) -> i32 {
         // Unknown or other
         _ => 0,
     }
+}
+
+/// Boost for common/important UI symbols that are frequently searched
+fn common_symbol_boost(title: &str) -> i32 {
+    static COMMON_SYMBOLS: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
+        HashMap::from([
+            // Core UI components
+            ("button", 8),
+            ("text", 8),
+            ("image", 8),
+            ("list", 8),
+            ("view", 7),
+            ("navigationstack", 7),
+            ("tabview", 7),
+            ("textfield", 7),
+            ("label", 6),
+            ("toggle", 6),
+            ("picker", 6),
+            ("slider", 6),
+            ("form", 6),
+            ("sheet", 6),
+            ("alert", 6),
+            ("menu", 6),
+            ("link", 5),
+            ("section", 5),
+            ("spacer", 5),
+            ("divider", 5),
+            ("scrollview", 5),
+            ("vstack", 5),
+            ("hstack", 5),
+            ("zstack", 5),
+            ("lazyvstack", 5),
+            ("lazyhstack", 5),
+            ("grid", 5),
+            ("asyncimage", 5),
+            ("progressview", 5),
+            ("color", 4),
+            ("font", 4),
+            ("gesture", 4),
+        ])
+    });
+
+    let title_lower = title.to_lowercase();
+    *COMMON_SYMBOLS.get(title_lower.as_str()).unwrap_or(&0)
 }
 
 /// Calculate edit distance between two strings (Levenshtein distance)
@@ -938,10 +1009,17 @@ fn score_entry(
         .unwrap_or_default()
         .to_lowercase();
 
-    // Strong boost for exact title match
-    if title_lower == query.raw {
-        score += 15;
+    // Very strong boost for exact title match - ensures exact matches appear first
+    if title_lower == query.raw || title_lower == query.compact {
+        score += 30;
         matched_terms = query.term_count();
+        // Extra boost for primary types (struct, class, protocol) with exact match
+        if matches!(
+            entry.reference.kind.as_deref().map(|k| k.to_lowercase()).as_deref(),
+            Some("struct") | Some("class") | Some("protocol") | Some("actor") | Some("enum")
+        ) {
+            score += 15;
+        }
     }
 
     for term in &query.terms {
@@ -1034,6 +1112,11 @@ fn score_entry(
     // Symbol kind boost - promote types over properties
     if score > 0 {
         score += symbol_kind_boost(entry.reference.kind.as_deref());
+
+        // Common symbol boost - prioritize frequently searched symbols
+        if let Some(title) = entry.reference.title.as_deref() {
+            score += common_symbol_boost(title);
+        }
     }
 
     if score > 0 {

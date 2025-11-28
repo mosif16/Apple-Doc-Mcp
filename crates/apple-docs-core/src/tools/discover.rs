@@ -175,7 +175,6 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
 async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let page = args.page.unwrap_or(1).max(1);
     let page_size = args.page_size.unwrap_or(25).clamp(1, 100);
-    let query_lower = args.query.as_ref().map(|q| q.to_lowercase());
     let category_lower = args.category.as_ref().map(|c| c.to_lowercase());
     let sort_by = args.sort_by.as_deref().unwrap_or("alphabetical");
 
@@ -198,13 +197,13 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         }
     }
 
-    // Apply query filter
-    if let Some(query_lower) = &query_lower {
+    // Apply query filter with normalization support
+    if let Some(query) = &args.query {
         frameworks.retain(|tech| {
-            tech.title.to_lowercase().contains(query_lower)
+            matches_framework_query(&tech.title, query)
                 || extract_text(&tech.r#abstract)
                     .to_lowercase()
-                    .contains(query_lower)
+                    .contains(&query.to_lowercase())
         });
     }
 
@@ -212,8 +211,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     match sort_by {
         "relevance" => {
             frameworks.sort_by(|a, b| {
-                let score_a = get_relevance_score(&a.title, &query_lower);
-                let score_b = get_relevance_score(&b.title, &query_lower);
+                let score_a = get_relevance_score(&a.title, &args.query);
+                let score_b = get_relevance_score(&b.title, &args.query);
                 score_b.cmp(&score_a).then_with(|| a.title.cmp(&b.title))
             });
         }
@@ -360,14 +359,28 @@ fn get_relevance_score(title: &str, query: &Option<String>) -> i32 {
         .map(|(_, s)| *s)
         .unwrap_or(30); // Default score for unknown frameworks
 
-    // Query match boost
+    // Query match boost with normalization
     if let Some(q) = query {
         let q_lower = q.to_lowercase();
-        if title_lower == q_lower {
+        let title_normalized = normalize_framework_query(title);
+        let query_normalized = normalize_framework_query(q);
+        let title_compact: String = title_lower.chars().filter(|c| !c.is_whitespace()).collect();
+        let query_compact: String = q_lower.chars().filter(|c| !c.is_whitespace()).collect();
+
+        // Exact matches (including normalized variants)
+        if title_lower == q_lower
+            || title_normalized == query_normalized
+            || title_compact == query_compact
+        {
             score += 50; // Exact match
-        } else if title_lower.starts_with(&q_lower) {
+        } else if title_lower.starts_with(&q_lower)
+            || title_normalized.starts_with(&query_normalized)
+        {
             score += 30; // Starts with query
-        } else if title_lower.contains(&q_lower) {
+        } else if title_lower.contains(&q_lower)
+            || title_normalized.contains(&query_normalized)
+            || title_compact.contains(&query_compact)
+        {
             score += 15; // Contains query
         }
     }
@@ -423,4 +436,59 @@ fn trim_with_ellipsis(text: &str, max: usize) -> String {
     } else {
         format!("{}...", &text[..max])
     }
+}
+
+/// Normalize a framework query to handle CamelCase variants.
+/// Examples:
+///   "CoreML" -> "core ml"
+///   "SwiftUI" -> "swiftui" (no split, as UI is a single unit)
+///   "AVFoundation" -> "av foundation"
+///   "CloudKit" -> "cloudkit" (Kit is kept together)
+fn normalize_framework_query(query: &str) -> String {
+    let mut result = String::new();
+    let chars: Vec<char> = query.chars().collect();
+
+    for (i, c) in chars.iter().enumerate() {
+        // Insert space before uppercase letter if:
+        // 1. Not the first character
+        // 2. Previous char was lowercase
+        // 3. OR current is uppercase and next is lowercase (for "AVFoundation" -> "AV Foundation")
+        if i > 0 && c.is_uppercase() {
+            let prev_lower = chars[i - 1].is_lowercase();
+            let next_lower = chars.get(i + 1).map(|nc| nc.is_lowercase()).unwrap_or(false);
+            let prev_upper = chars[i - 1].is_uppercase();
+
+            if prev_lower || (prev_upper && next_lower) {
+                result.push(' ');
+            }
+        }
+        result.push(c.to_lowercase().next().unwrap());
+    }
+    result
+}
+
+/// Check if query matches framework title with normalization.
+/// Handles cases like "CoreML" matching "Core ML" and vice versa.
+fn matches_framework_query(title: &str, query: &str) -> bool {
+    let title_lower = title.to_lowercase();
+    let query_lower = query.to_lowercase();
+
+    // Direct match
+    if title_lower.contains(&query_lower) {
+        return true;
+    }
+
+    // Normalized match (handles CamelCase)
+    let title_normalized = normalize_framework_query(title);
+    let query_normalized = normalize_framework_query(query);
+
+    if title_normalized.contains(&query_normalized) {
+        return true;
+    }
+
+    // Also try without spaces (for "Core ML" matching "coreml")
+    let title_compact: String = title_lower.chars().filter(|c| !c.is_whitespace()).collect();
+    let query_compact: String = query_lower.chars().filter(|c| !c.is_whitespace()).collect();
+
+    title_compact.contains(&query_compact)
 }
