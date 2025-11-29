@@ -10,9 +10,11 @@ const HEADLESS_ENV: &str = "APPLEDOC_HEADLESS";
 ///
 /// Phase 2 provides scaffolding only; the concrete implementation lands in later phases.
 pub async fn run_server() -> Result<()> {
-    let mut config = ServerConfig::default();
-    config.cache_dir = resolve_cache_dir();
-    config.mode = resolve_mode();
+    let config = ServerConfig {
+        cache_dir: resolve_cache_dir(),
+        mode: resolve_mode(),
+        ..Default::default()
+    };
 
     tracing::info!(
         target: "apple_docs_mcp",

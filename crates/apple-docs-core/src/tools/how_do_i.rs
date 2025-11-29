@@ -107,10 +107,9 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
 
         let fallback = build_fallback_recipe(context.clone(), &active.title, &task_trimmed).await;
         if let Some(fallback) = fallback {
-            metadata
-                .as_object_mut()
-                .unwrap()
-                .insert("fallback".to_string(), fallback.metadata.clone());
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.insert("fallback".to_string(), fallback.metadata.clone());
+            }
             let mut augmented = lines;
             augmented.push(String::new());
             augmented.push(markdown::header(2, "Suggested Plan"));

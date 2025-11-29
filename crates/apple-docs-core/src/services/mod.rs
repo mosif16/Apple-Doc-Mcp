@@ -25,7 +25,7 @@ pub async fn load_active_framework(context: &AppContext) -> Result<FrameworkData
     let identifier = technology
         .identifier
         .split('/')
-        .last()
+        .next_back()
         .context("Invalid technology identifier")?;
     let data = context
         .client
@@ -69,7 +69,7 @@ pub async fn ensure_global_framework_index(
     let identifier = technology
         .identifier
         .split('/')
-        .last()
+        .next_back()
         .context("Invalid technology identifier")?;
     let framework = context
         .client

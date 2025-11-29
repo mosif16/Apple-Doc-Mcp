@@ -502,6 +502,33 @@ pub async fn guidance_for(
     Ok(sections)
 }
 
+/// Pre-cache design guidance for a technology during framework load
+/// This populates both the global CACHE and the ServerState cache for fast lookups
+pub async fn precache_for_technology(
+    context: &AppContext,
+    technology: &Technology,
+) -> Result<()> {
+    let topics = primer_topics_for_technology(technology);
+    if topics.is_empty() {
+        return Ok(());
+    }
+
+    // Pre-fetch all primer topics and populate both caches
+    for slug in topics {
+        if let Some(section) = fetch_or_load(context, slug).await? {
+            // Insert into ServerState cache for O(1) lookups
+            context
+                .state
+                .design_guidance_cache
+                .write()
+                .await
+                .insert(slug.to_string(), Arc::new(section));
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn primers_for_technology(
     context: &AppContext,
     technology: &Technology,
@@ -740,10 +767,17 @@ fn primer_topics_for_technology(technology: &Technology) -> Vec<&'static str> {
 }
 
 async fn fetch_or_load(context: &AppContext, slug: &'static str) -> Result<Option<DesignSection>> {
+    // Check ServerState cache first (O(1) lookup for pre-cached data)
+    if let Some(cached) = context.state.design_guidance_cache.read().await.get(slug) {
+        return Ok(Some((**cached).clone()));
+    }
+
+    // Check global CACHE second
     if let Some(cached) = CACHE.read().await.get(slug).cloned() {
         return Ok(Some((*cached).clone()));
     }
 
+    // Fetch from network if not cached
     let value = match context.client.load_document(slug).await {
         Ok(value) => value,
         Err(error) => {
@@ -758,7 +792,14 @@ async fn fetch_or_load(context: &AppContext, slug: &'static str) -> Result<Optio
     };
 
     let arc = Arc::new(parsed);
+    // Populate both caches
     CACHE.write().await.insert(slug.to_string(), arc.clone());
+    context
+        .state
+        .design_guidance_cache
+        .write()
+        .await
+        .insert(slug.to_string(), arc.clone());
     Ok(Some((*arc).clone()))
 }
 
@@ -954,11 +995,10 @@ fn reference_label(node: &Value) -> Option<String> {
         }
     }
     if let Some(identifier) = node.get("identifier").and_then(Value::as_str) {
-        if let Some(last) = identifier.split('/').last() {
+        if let Some(last) = identifier.split('/').next_back() {
             if !last.is_empty() {
                 let label = last
-                    .replace('-', " ")
-                    .replace('_', " ")
+                    .replace(['-', '_'], " ")
                     .replace(".html", "")
                     .trim()
                     .to_string();
@@ -1010,7 +1050,7 @@ fn abbreviate(text: &str) -> String {
     if let Some(last_space) = truncated.rfind(' ') {
         truncated.truncate(last_space);
     }
-    truncated.push_str("…");
+    truncated.push('…');
     truncated
 }
 

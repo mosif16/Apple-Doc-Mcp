@@ -873,6 +873,316 @@ static RECIPES: Lazy<Vec<RecipeDefinition>> = Lazy::new(|| {
         },
     ];
 
+    // SwiftUI advanced references
+    const CUSTOM_LAYOUT_REFS: [Related; 3] = [
+        Related {
+            title: "Layout",
+            path: "/documentation/swiftui/layout",
+            note: "Protocol for creating custom layouts.",
+        },
+        Related {
+            title: "LayoutValueKey",
+            path: "/documentation/swiftui/layoutvaluekey",
+            note: "Define custom layout properties.",
+        },
+        Related {
+            title: "ProposedViewSize",
+            path: "/documentation/swiftui/proposedviewsize",
+            note: "Size proposed by parent container.",
+        },
+    ];
+
+    const NAVIGATION_SPLIT_REFS: [Related; 3] = [
+        Related {
+            title: "NavigationSplitView",
+            path: "/documentation/swiftui/navigationsplitview",
+            note: "Multi-column navigation interface.",
+        },
+        Related {
+            title: "navigationSplitViewStyle(_:)",
+            path: "/documentation/swiftui/view/navigationsplitviewstyle(_:)",
+            note: "Customize split view behavior.",
+        },
+        Related {
+            title: "NavigationStack",
+            path: "/documentation/swiftui/navigationstack",
+            note: "Use inside columns for push navigation.",
+        },
+    ];
+
+    const BINDING_REFS: [Related; 3] = [
+        Related {
+            title: "@Binding",
+            path: "/documentation/swiftui/binding",
+            note: "Two-way connection to source of truth.",
+        },
+        Related {
+            title: "Binding.constant(_:)",
+            path: "/documentation/swiftui/binding/constant(_:)",
+            note: "Create immutable binding for previews.",
+        },
+        Related {
+            title: "@State",
+            path: "/documentation/swiftui/state",
+            note: "Source of truth for binding.",
+        },
+    ];
+
+    const COMPLEX_GESTURE_REFS: [Related; 3] = [
+        Related {
+            title: "simultaneousGesture(_:including:)",
+            path: "/documentation/swiftui/view/simultaneousgesture(_:including:)",
+            note: "Combine multiple gestures that run together.",
+        },
+        Related {
+            title: "sequenced(before:)",
+            path: "/documentation/swiftui/gesture/sequenced(before:)",
+            note: "Chain gestures in sequence.",
+        },
+        Related {
+            title: "exclusively(before:)",
+            path: "/documentation/swiftui/gesture/exclusively(before:)",
+            note: "Prioritize one gesture over another.",
+        },
+    ];
+
+    const ADVANCED_ANIMATION_REFS: [Related; 3] = [
+        Related {
+            title: "PhaseAnimator",
+            path: "/documentation/swiftui/phaseanimator",
+            note: "Animate through sequence of phases.",
+        },
+        Related {
+            title: "KeyframeAnimator",
+            path: "/documentation/swiftui/keyframeanimator",
+            note: "Create keyframe-based animations.",
+        },
+        Related {
+            title: "TimelineView",
+            path: "/documentation/swiftui/timelineview",
+            note: "Update view on schedule for animations.",
+        },
+    ];
+
+    const ADVANCED_ACCESSIBILITY_REFS: [Related; 3] = [
+        Related {
+            title: "accessibilityElement(children:)",
+            path: "/documentation/swiftui/view/accessibilityelement(children:)",
+            note: "Combine multiple views into single element.",
+        },
+        Related {
+            title: "accessibilityAction(_:_:)",
+            path: "/documentation/swiftui/view/accessibilityaction(_:_:)",
+            note: "Add custom actions to elements.",
+        },
+        Related {
+            title: "accessibilityRotor(_:entries:)",
+            path: "/documentation/swiftui/view/accessibilityrotor(_:entries:)",
+            note: "Create custom VoiceOver rotors.",
+        },
+    ];
+
+    // UIKit references
+    const COMPOSITIONAL_LAYOUT_REFS: [Related; 3] = [
+        Related {
+            title: "UICollectionViewCompositionalLayout",
+            path: "/documentation/uikit/uicollectionviewcompositionallayout",
+            note: "Modern declarative collection view layouts.",
+        },
+        Related {
+            title: "NSCollectionLayoutSection",
+            path: "/documentation/uikit/nscollectionlayoutsection",
+            note: "Define individual sections.",
+        },
+        Related {
+            title: "NSCollectionLayoutGroup",
+            path: "/documentation/uikit/nscollectionlayoutgroup",
+            note: "Arrange items within sections.",
+        },
+    ];
+
+    const DIFFABLE_DATASOURCE_REFS: [Related; 3] = [
+        Related {
+            title: "UITableViewDiffableDataSource",
+            path: "/documentation/uikit/uitableviewdiffabledatasource",
+            note: "Manage table data with automatic diffing.",
+        },
+        Related {
+            title: "NSDiffableDataSourceSnapshot",
+            path: "/documentation/uikit/nsdiffabledatasourcesnapshot",
+            note: "Represent current state of data.",
+        },
+        Related {
+            title: "UITableView",
+            path: "/documentation/uikit/uitableview",
+            note: "Display data in single column of rows.",
+        },
+    ];
+
+    const VIEW_CONTROLLER_REFS: [Related; 3] = [
+        Related {
+            title: "UIViewController",
+            path: "/documentation/uikit/uiviewcontroller",
+            note: "Manage view hierarchy and lifecycle.",
+        },
+        Related {
+            title: "viewDidLoad()",
+            path: "/documentation/uikit/uiviewcontroller/1621495-viewdidload",
+            note: "Called after view is loaded into memory.",
+        },
+        Related {
+            title: "viewWillAppear(_:)",
+            path: "/documentation/uikit/uiviewcontroller/1621510-viewwillappear",
+            note: "Called before view appears on screen.",
+        },
+    ];
+
+    const AUTO_LAYOUT_REFS: [Related; 3] = [
+        Related {
+            title: "NSLayoutConstraint",
+            path: "/documentation/uikit/nslayoutconstraint",
+            note: "Define relationship between views.",
+        },
+        Related {
+            title: "NSLayoutAnchor",
+            path: "/documentation/uikit/nslayoutanchor",
+            note: "Type-safe constraint creation.",
+        },
+        Related {
+            title: "translatesAutoresizingMaskIntoConstraints",
+            path: "/documentation/uikit/uiview/1622572-translatesautoresizingmaskintoco",
+            note: "Disable to use Auto Layout programmatically.",
+        },
+    ];
+
+    // Foundation references
+    const ASYNC_AWAIT_REFS: [Related; 3] = [
+        Related {
+            title: "Task",
+            path: "/documentation/swift/task",
+            note: "Create and manage asynchronous work.",
+        },
+        Related {
+            title: "TaskGroup",
+            path: "/documentation/swift/taskgroup",
+            note: "Execute multiple tasks concurrently.",
+        },
+        Related {
+            title: "async let",
+            path: "/documentation/swift/async",
+            note: "Run child tasks in parallel.",
+        },
+    ];
+
+    const CODABLE_REFS: [Related; 3] = [
+        Related {
+            title: "Codable",
+            path: "/documentation/swift/codable",
+            note: "Protocol for encoding and decoding.",
+        },
+        Related {
+            title: "JSONEncoder",
+            path: "/documentation/foundation/jsonencoder",
+            note: "Encode types to JSON data.",
+        },
+        Related {
+            title: "JSONDecoder",
+            path: "/documentation/foundation/jsondecoder",
+            note: "Decode JSON data to types.",
+        },
+    ];
+
+    const URLSESSION_REFS: [Related; 3] = [
+        Related {
+            title: "URLSession",
+            path: "/documentation/foundation/urlsession",
+            note: "Perform network requests.",
+        },
+        Related {
+            title: "URLRequest",
+            path: "/documentation/foundation/urlrequest",
+            note: "Configure HTTP requests.",
+        },
+        Related {
+            title: "URLResponse",
+            path: "/documentation/foundation/urlresponse",
+            note: "Inspect response metadata.",
+        },
+    ];
+
+    const DATE_CALENDAR_REFS: [Related; 3] = [
+        Related {
+            title: "Calendar",
+            path: "/documentation/foundation/calendar",
+            note: "Perform date calculations.",
+        },
+        Related {
+            title: "DateComponents",
+            path: "/documentation/foundation/datecomponents",
+            note: "Represent parts of a date.",
+        },
+        Related {
+            title: "DateFormatter",
+            path: "/documentation/foundation/dateformatter",
+            note: "Format dates for display.",
+        },
+    ];
+
+    // Core Data references
+    const COREDATA_CRUD_REFS: [Related; 3] = [
+        Related {
+            title: "NSManagedObjectContext",
+            path: "/documentation/coredata/nsmanagedobjectcontext",
+            note: "Manage object graph and persistence.",
+        },
+        Related {
+            title: "NSManagedObject",
+            path: "/documentation/coredata/nsmanagedobject",
+            note: "Base class for managed objects.",
+        },
+        Related {
+            title: "NSFetchRequest",
+            path: "/documentation/coredata/nsfetchrequest",
+            note: "Retrieve objects from store.",
+        },
+    ];
+
+    const CLOUDKIT_SYNC_REFS: [Related; 3] = [
+        Related {
+            title: "NSPersistentCloudKitContainer",
+            path: "/documentation/coredata/nspersistentcloudkitcontainer",
+            note: "Sync Core Data with CloudKit.",
+        },
+        Related {
+            title: "NSPersistentContainer",
+            path: "/documentation/coredata/nspersistentcontainer",
+            note: "Encapsulate Core Data stack.",
+        },
+        Related {
+            title: "CloudKit",
+            path: "/documentation/cloudkit",
+            note: "Apple's cloud database service.",
+        },
+    ];
+
+    const COREDATA_MIGRATION_REFS: [Related; 3] = [
+        Related {
+            title: "NSMappingModel",
+            path: "/documentation/coredata/nsmappingmodel",
+            note: "Define migration between model versions.",
+        },
+        Related {
+            title: "NSMigrationManager",
+            path: "/documentation/coredata/nsmigrationmanager",
+            note: "Manage migration process.",
+        },
+        Related {
+            title: "NSManagedObjectModel",
+            path: "/documentation/coredata/nsmanagedobjectmodel",
+            note: "Schema definition for Core Data.",
+        },
+    ];
+
     vec![
         Recipe {
             id: "swiftui-search-list",
@@ -1128,6 +1438,376 @@ static RECIPES: Lazy<Vec<RecipeDefinition>> = Lazy::new(|| {
                 "The model will invoke tools as needed and incorporate results.",
             ],
             references: &FM_TOOLS_REFS,
+        },
+        // Additional SwiftUI recipes
+        Recipe {
+            id: "swiftui-custom-layout",
+            technology: "swiftui",
+            title: "Build custom layouts with the Layout protocol",
+            summary: "Create advanced custom layouts that go beyond HStack, VStack, and ZStack.",
+            keywords: &[
+                "how do i create custom layout",
+                "custom layout",
+                "layout protocol",
+                "advanced layout",
+                "custom container",
+            ],
+            steps: &[
+                "Create a struct conforming to the Layout protocol.",
+                "Implement sizeThatFits(proposal:subviews:cache:) to calculate the layout's size.",
+                "Implement placeSubviews(in:proposal:subviews:cache:) to position child views.",
+                "Optionally define cache storage for expensive calculations.",
+                "Use LayoutValueKey to pass custom data from children to layout.",
+            ],
+            references: &CUSTOM_LAYOUT_REFS,
+        },
+        Recipe {
+            id: "swiftui-navigation-split-view",
+            technology: "swiftui",
+            title: "Create multi-column interfaces with NavigationSplitView",
+            summary: "Build sidebar-detail or three-column layouts for iPad and macOS.",
+            keywords: &[
+                "how do i create sidebar",
+                "navigation split view",
+                "sidebar",
+                "multi-column",
+                "three column",
+                "master detail",
+            ],
+            steps: &[
+                "Create a NavigationSplitView with sidebar and detail closures.",
+                "For three columns, add a content closure between sidebar and detail.",
+                "Bind selection state to control which detail view appears.",
+                "Use NavigationStack within columns for push navigation.",
+                "Customize column visibility with navigationSplitViewStyle modifier.",
+            ],
+            references: &NAVIGATION_SPLIT_REFS,
+        },
+        Recipe {
+            id: "swiftui-binding-patterns",
+            technology: "swiftui",
+            title: "Use @Binding to share state between views",
+            summary: "Create two-way connections that let child views modify parent state.",
+            keywords: &[
+                "how do i use binding",
+                "binding",
+                "two-way binding",
+                "share state",
+                "pass state",
+                "child view state",
+            ],
+            steps: &[
+                "Define a @Binding property in the child view for the shared value.",
+                "In the parent, create @State for the source of truth.",
+                "Pass the binding with $ prefix when creating the child view.",
+                "The child can now read and write to the parent's state.",
+                "Use Binding.constant(_:) in previews for non-editable bindings.",
+            ],
+            references: &BINDING_REFS,
+        },
+        Recipe {
+            id: "swiftui-complex-gestures",
+            technology: "swiftui",
+            title: "Combine and sequence gestures",
+            summary: "Create sophisticated interactions by composing multiple gestures.",
+            keywords: &[
+                "how do i combine gestures",
+                "gesture composition",
+                "simultaneous gesture",
+                "gesture sequence",
+                "complex gesture",
+            ],
+            steps: &[
+                "Define individual gestures (drag, tap, long press, etc.).",
+                "Use simultaneousGesture for gestures that run at the same time.",
+                "Use sequenced(before:) to chain gestures in order.",
+                "Use exclusively(before:) to prioritize one gesture over another.",
+                "Combine updating and onEnded callbacks to track gesture state.",
+            ],
+            references: &COMPLEX_GESTURE_REFS,
+        },
+        Recipe {
+            id: "swiftui-advanced-animations",
+            technology: "swiftui",
+            title: "Create phase-based and keyframe animations",
+            summary: "Build complex multi-step animations with precise control.",
+            keywords: &[
+                "how do i create keyframe animation",
+                "keyframe animation",
+                "phase animator",
+                "multi-step animation",
+                "complex animation",
+            ],
+            steps: &[
+                "Use PhaseAnimator to cycle through discrete animation phases.",
+                "Define an enum for each phase and trigger changes on phase updates.",
+                "Use KeyframeAnimator for precise timing control over multiple properties.",
+                "Define keyframes with specific values and timing curves.",
+                "Combine with TimelineView for continuous animations based on time.",
+            ],
+            references: &ADVANCED_ANIMATION_REFS,
+        },
+        Recipe {
+            id: "swiftui-advanced-accessibility",
+            technology: "swiftui",
+            title: "Implement advanced accessibility features",
+            summary: "Add custom actions, rotors, and element grouping for VoiceOver users.",
+            keywords: &[
+                "how do i improve accessibility",
+                "accessibility rotor",
+                "voiceover",
+                "custom actions",
+                "accessibility element",
+            ],
+            steps: &[
+                "Use accessibilityElement(children:) to combine multiple views into one element.",
+                "Add accessibilityAction to provide custom VoiceOver actions beyond tap.",
+                "Create custom rotors with accessibilityRotor for navigation shortcuts.",
+                "Group related controls with proper labels and hints.",
+                "Test with VoiceOver enabled to verify the experience.",
+            ],
+            references: &ADVANCED_ACCESSIBILITY_REFS,
+        },
+        // UIKit recipes
+        Recipe {
+            id: "uikit-compositional-layout",
+            technology: "uikit",
+            title: "Create UICollectionView compositional layouts",
+            summary: "Build modern, declarative collection view layouts with sections and groups.",
+            keywords: &[
+                "how do i create collection view layout",
+                "compositional layout",
+                "collection view layout",
+                "uicollectionview",
+                "modern layout",
+            ],
+            steps: &[
+                "Define NSCollectionLayoutItem for individual cells with size and insets.",
+                "Create NSCollectionLayoutGroup to arrange items horizontally or vertically.",
+                "Build NSCollectionLayoutSection from groups with spacing and insets.",
+                "Construct UICollectionViewCompositionalLayout from section provider.",
+                "Optionally add headers, footers, and section backgrounds.",
+            ],
+            references: &COMPOSITIONAL_LAYOUT_REFS,
+        },
+        Recipe {
+            id: "uikit-diffable-datasource",
+            technology: "uikit",
+            title: "Manage UITableView with diffable data sources",
+            summary: "Use UITableViewDiffableDataSource for automatic animated updates.",
+            keywords: &[
+                "how do i use diffable datasource",
+                "diffable data source",
+                "uitableview datasource",
+                "automatic updates",
+                "animated table",
+            ],
+            steps: &[
+                "Define section and item identifier types that are Hashable.",
+                "Create UITableViewDiffableDataSource with cell provider closure.",
+                "Build NSDiffableDataSourceSnapshot with sections and items.",
+                "Apply snapshot to data source - it automatically animates differences.",
+                "Update by creating new snapshots and applying them.",
+            ],
+            references: &DIFFABLE_DATASOURCE_REFS,
+        },
+        Recipe {
+            id: "uikit-view-controller-lifecycle",
+            technology: "uikit",
+            title: "Manage UIViewController lifecycle",
+            summary: "Understand and respond to view controller lifecycle events.",
+            keywords: &[
+                "how do i use view controller",
+                "view controller lifecycle",
+                "viewdidload",
+                "viewwillappear",
+                "lifecycle methods",
+            ],
+            steps: &[
+                "Override viewDidLoad() for one-time setup after view is loaded.",
+                "Use viewWillAppear(_:) for updates that happen each time view appears.",
+                "Implement viewDidAppear(_:) for animations or operations after view is visible.",
+                "Use viewWillDisappear(_:) to save state before view disappears.",
+                "Call super for all lifecycle methods to maintain proper behavior.",
+            ],
+            references: &VIEW_CONTROLLER_REFS,
+        },
+        Recipe {
+            id: "uikit-auto-layout-programmatic",
+            technology: "uikit",
+            title: "Create Auto Layout constraints programmatically",
+            summary: "Build adaptive layouts using NSLayoutAnchor and NSLayoutConstraint.",
+            keywords: &[
+                "how do i use auto layout",
+                "auto layout",
+                "programmatic constraints",
+                "nslayoutanchor",
+                "layout constraints",
+            ],
+            steps: &[
+                "Set translatesAutoresizingMaskIntoConstraints to false on views.",
+                "Use NSLayoutAnchor for type-safe constraint creation (leadingAnchor, etc.).",
+                "Activate constraints with NSLayoutConstraint.activate() or isActive = true.",
+                "Use constraint constants, multipliers, and priorities for flexibility.",
+                "Consider safe area anchors for proper iPhone X+ compatibility.",
+            ],
+            references: &AUTO_LAYOUT_REFS,
+        },
+        // Foundation recipes
+        Recipe {
+            id: "foundation-async-await",
+            technology: "foundation",
+            title: "Use async/await for concurrent operations",
+            summary: "Perform asynchronous work with Task, async/await, and TaskGroup.",
+            keywords: &[
+                "how do i use async await",
+                "async await",
+                "task",
+                "concurrency",
+                "async operations",
+                "taskgroup",
+            ],
+            steps: &[
+                "Mark functions as async to enable await calls within them.",
+                "Use Task { } to bridge from synchronous to asynchronous contexts.",
+                "Call async functions with await keyword to suspend until complete.",
+                "Use async let for parallel execution of independent async calls.",
+                "Use TaskGroup for dynamic number of concurrent operations.",
+            ],
+            references: &ASYNC_AWAIT_REFS,
+        },
+        Recipe {
+            id: "foundation-codable",
+            technology: "foundation",
+            title: "Encode and decode JSON with Codable",
+            summary: "Convert between Swift types and JSON data using Codable protocol.",
+            keywords: &[
+                "how do i use codable",
+                "codable",
+                "json encoding",
+                "json decoding",
+                "parse json",
+                "serialize json",
+            ],
+            steps: &[
+                "Define structs conforming to Codable protocol for automatic synthesis.",
+                "Use CodingKeys enum to map between Swift and JSON property names.",
+                "Create JSONDecoder and call decode(_:from:) to parse JSON data.",
+                "Create JSONEncoder and call encode(_:) to convert types to JSON.",
+                "Configure encoder/decoder options like keyDecodingStrategy and dateEncodingStrategy.",
+            ],
+            references: &CODABLE_REFS,
+        },
+        Recipe {
+            id: "foundation-urlsession",
+            technology: "foundation",
+            title: "Make HTTP requests with URLSession",
+            summary: "Fetch data from web services using modern async/await URLSession APIs.",
+            keywords: &[
+                "how do i make http request",
+                "urlsession",
+                "network request",
+                "http request",
+                "fetch data",
+                "api call",
+            ],
+            steps: &[
+                "Create a URL and URLRequest, configuring HTTP method and headers.",
+                "Use URLSession.shared.data(for:) with await for async requests.",
+                "Check HTTPURLResponse status code to verify success.",
+                "Decode response data using JSONDecoder if expecting JSON.",
+                "Handle URLError cases for network failures and timeouts.",
+            ],
+            references: &URLSESSION_REFS,
+        },
+        Recipe {
+            id: "foundation-date-calendar",
+            technology: "foundation",
+            title: "Perform date calculations with Calendar",
+            summary: "Add, subtract, and compare dates using Calendar and DateComponents.",
+            keywords: &[
+                "how do i work with dates",
+                "calendar",
+                "date calculations",
+                "datecomponents",
+                "date formatting",
+            ],
+            steps: &[
+                "Use Calendar.current to get the user's calendar.",
+                "Create DateComponents to represent date offsets (days, months, etc.).",
+                "Use calendar.date(byAdding:to:) to add or subtract time from dates.",
+                "Use calendar.component(_:from:) to extract parts of a date.",
+                "Format dates for display with DateFormatter and set dateStyle/timeStyle.",
+            ],
+            references: &DATE_CALENDAR_REFS,
+        },
+        // Core Data recipes
+        Recipe {
+            id: "coredata-crud",
+            technology: "core data",
+            title: "Perform CRUD operations with Core Data",
+            summary: "Create, read, update, and delete managed objects using NSManagedObjectContext.",
+            keywords: &[
+                "how do i use core data",
+                "core data crud",
+                "create object",
+                "fetch objects",
+                "save context",
+                "delete object",
+            ],
+            steps: &[
+                "Create new objects with NSEntityDescription.insertNewObject(forEntityName:into:).",
+                "Set properties on the managed object instance.",
+                "Fetch objects using NSFetchRequest with predicates and sort descriptors.",
+                "Update by modifying properties and saving the context.",
+                "Delete with context.delete(_:) and save to persist changes.",
+                "Always call context.save() to persist changes to the persistent store.",
+            ],
+            references: &COREDATA_CRUD_REFS,
+        },
+        Recipe {
+            id: "coredata-cloudkit-sync",
+            technology: "core data",
+            title: "Sync Core Data with CloudKit",
+            summary: "Enable automatic cloud sync using NSPersistentCloudKitContainer.",
+            keywords: &[
+                "how do i sync cloudkit",
+                "cloudkit sync",
+                "cloud sync",
+                "nspersistentcloudkitcontainer",
+                "icloud sync",
+            ],
+            steps: &[
+                "Replace NSPersistentContainer with NSPersistentCloudKitContainer.",
+                "Enable CloudKit capability in your Xcode project.",
+                "Add CloudKit container identifier to entitlements.",
+                "Configure store description with cloudKitContainerOptions.",
+                "Core Data automatically syncs changes to CloudKit in the background.",
+                "Handle merge conflicts with NSManagedObjectContext merge policies.",
+            ],
+            references: &CLOUDKIT_SYNC_REFS,
+        },
+        Recipe {
+            id: "coredata-migration",
+            technology: "core data",
+            title: "Migrate Core Data schema changes",
+            summary: "Update your data model and migrate existing user data safely.",
+            keywords: &[
+                "how do i migrate core data",
+                "core data migration",
+                "schema migration",
+                "model version",
+                "lightweight migration",
+            ],
+            steps: &[
+                "Create new model version in Xcode (Editor > Add Model Version).",
+                "Make changes to the new model version (add/remove entities or attributes).",
+                "Set the new version as current model in data model inspector.",
+                "Enable automatic lightweight migration in NSPersistentStoreDescription options.",
+                "For complex changes, create NSMappingModel for custom migration logic.",
+                "Test migration with production data before releasing.",
+            ],
+            references: &COREDATA_MIGRATION_REFS,
         },
     ]
 });

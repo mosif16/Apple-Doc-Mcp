@@ -65,6 +65,7 @@ struct RankedEntry {
     entry: FrameworkIndexEntry,
     matched_terms: usize,
     synonym_hits: usize,
+    proximity_bonus: i32,
 }
 
 static QUERY_SYNONYMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
@@ -390,6 +391,7 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
     let mut synonym_match_total = 0usize;
     let mut full_term_match_count = 0usize;
     let mut total_score = 0i32;
+    let mut total_proximity_bonus = 0i32;
     let term_count = query.term_count();
 
     if deduped_matches.is_empty() {
@@ -418,6 +420,7 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
         for ranked in &deduped_matches {
             total_score += ranked.score;
             synonym_match_total += ranked.synonym_hits;
+            total_proximity_bonus += ranked.proximity_bonus;
             if term_count > 0 && ranked.matched_terms >= term_count {
                 full_term_match_count += 1;
             }
@@ -442,8 +445,7 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
             let platform_slice = entry
                 .reference
                 .platforms
-                .as_ref()
-                .map(|platforms| platforms.as_slice());
+                .as_deref();
             let (platform_label, availability) = classify_platforms(&path, platform_slice);
             let key = dedup_key(&path, &title);
             lines.push(format!(
@@ -528,6 +530,7 @@ async fn search_active_technology(context: Arc<AppContext>, args: Args) -> Resul
         "fullMatchCount": full_term_match_count,
         "avgScore": if match_count == 0 { 0.0 } else { total_score as f64 / match_count as f64 },
         "queryTerms": term_count,
+        "proximityBonus": total_proximity_bonus,
     });
     log_search_query(
         &context,
@@ -548,8 +551,8 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
     let technologies = context.client.get_technologies().await?;
     let frameworks: Vec<Technology> = technologies
         .values()
-        .cloned()
         .filter(|tech| tech.kind == "symbol" && tech.role == "collection")
+        .cloned()
         .collect();
 
     let mut aggregate = Vec::new();
@@ -586,6 +589,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
                 technology_identifier: technology.identifier.clone(),
                 matched_terms: ranked.matched_terms,
                 synonym_hits: ranked.synonym_hits,
+                proximity_bonus: ranked.proximity_bonus,
             });
         }
     }
@@ -660,6 +664,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
     let mut synonym_match_total = 0usize;
     let mut full_term_match_count = 0usize;
     let mut total_score = 0i32;
+    let mut total_proximity_bonus = 0i32;
     let term_count = query.term_count();
 
     if matches.is_empty() {
@@ -680,6 +685,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
             "fullMatchCount": 0,
             "avgScore": 0.0,
             "queryTerms": term_count,
+            "proximityBonus": 0,
         });
         return Ok(text_response(lines).with_metadata(metadata));
     }
@@ -687,6 +693,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
     for matched in &matches {
         total_score += matched.score;
         synonym_match_total += matched.synonym_hits;
+        total_proximity_bonus += matched.proximity_bonus;
         if term_count > 0 && matched.matched_terms >= term_count {
             full_term_match_count += 1;
         }
@@ -714,8 +721,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
             .entry
             .reference
             .platforms
-            .as_ref()
-            .map(|platforms| platforms.as_slice());
+            .as_deref();
         let (platform_label, availability) = classify_platforms(&path, platform_slice);
         let key = dedup_key(&path, &title);
 
@@ -803,6 +809,7 @@ async fn search_all_technologies(context: Arc<AppContext>, args: Args) -> Result
         "fullMatchCount": full_term_match_count,
         "avgScore": if matches.is_empty() { 0.0 } else { total_score as f64 / matches.len() as f64 },
         "queryTerms": term_count,
+        "proximityBonus": total_proximity_bonus,
     });
     log_search_query(&context, None, "global", &query.raw, matches.len()).await;
 
@@ -852,6 +859,7 @@ fn collect_matches(
                 entry: entry.clone(),
                 matched_terms: score.matched_terms,
                 synonym_hits: score.synonym_hits,
+                proximity_bonus: score.proximity_bonus,
             });
         }
     }
@@ -868,6 +876,7 @@ struct MatchScore {
     score: i32,
     matched_terms: usize,
     synonym_hits: usize,
+    proximity_bonus: i32,
 }
 
 /// Symbol kind priority - higher values rank better for general searches
@@ -986,6 +995,35 @@ fn edit_distance(a: &str, b: &str, max_distance: usize) -> Option<usize> {
     }
 }
 
+/// Calculate proximity bonus based on matched token positions
+/// Awards points when query terms appear close together in the symbol
+fn calculate_proximity_bonus(positions: &[usize]) -> i32 {
+    if positions.len() < 2 {
+        return 0;
+    }
+
+    let mut sorted_positions = positions.to_vec();
+    sorted_positions.sort_unstable();
+
+    let mut total_bonus = 0;
+
+    // Check consecutive pairs of matched positions
+    for window in sorted_positions.windows(2) {
+        let distance = window[1] - window[0];
+
+        let bonus = match distance {
+            1 => 5,      // Adjacent tokens: +5 points
+            2 => 3,      // Within 2 tokens: +3 points
+            3..=4 => 1,  // Within 4 tokens: +1 point
+            _ => 0,
+        };
+
+        total_bonus += bonus;
+    }
+
+    total_bonus
+}
+
 fn score_entry(
     entry: &FrameworkIndexEntry,
     query: &QueryConfig,
@@ -994,6 +1032,7 @@ fn score_entry(
     let mut score = 0;
     let mut matched_terms = 0usize;
     let mut synonym_hits = 0usize;
+    let mut matched_positions: Vec<usize> = Vec::new();
 
     let title_lower = entry
         .reference
@@ -1024,30 +1063,81 @@ fn score_entry(
 
     for term in &query.terms {
         let mut term_score = 0;
-        if entry.tokens.iter().any(|token| token == term) {
-            term_score = 6;
-        } else if entry.tokens.iter().any(|token| token.starts_with(term)) {
-            term_score = 4;
-        } else if entry.tokens.iter().any(|token| token.contains(term)) {
-            term_score = 2;
-        } else if let Some(synonyms) = query.synonyms.get(term) {
-            let mut synonym_hit = false;
-            for synonym in synonyms {
-                if entry.tokens.iter().any(|token| token == synonym) {
-                    term_score = 3;
-                    synonym_hit = true;
+        let mut matched_position: Option<usize> = None;
+
+        // Check for exact match
+        for (idx, token) in entry.tokens.iter().enumerate() {
+            if token == term {
+                term_score = 6;
+                matched_position = Some(idx);
+                break;
+            }
+        }
+
+        // Check for prefix match if no exact match
+        if term_score == 0 {
+            for (idx, token) in entry.tokens.iter().enumerate() {
+                if token.starts_with(term) {
+                    term_score = 4;
+                    matched_position = Some(idx);
                     break;
-                } else if entry.tokens.iter().any(|token| token.starts_with(synonym)) {
-                    term_score = 2;
-                    synonym_hit = true;
-                    break;
-                } else if entry.tokens.iter().any(|token| token.contains(synonym)) {
-                    term_score = 1;
-                    synonym_hit = true;
                 }
             }
-            if synonym_hit {
-                synonym_hits += 1;
+        }
+
+        // Check for contains match if still no match
+        if term_score == 0 {
+            for (idx, token) in entry.tokens.iter().enumerate() {
+                if token.contains(term) {
+                    term_score = 2;
+                    matched_position = Some(idx);
+                    break;
+                }
+            }
+        }
+
+        // Check synonyms if still no match
+        if term_score == 0 {
+            if let Some(synonyms) = query.synonyms.get(term) {
+                let mut synonym_hit = false;
+                for synonym in synonyms {
+                    for (idx, token) in entry.tokens.iter().enumerate() {
+                        if token == synonym {
+                            term_score = 3;
+                            matched_position = Some(idx);
+                            synonym_hit = true;
+                            break;
+                        }
+                    }
+                    if synonym_hit {
+                        break;
+                    }
+                    for (idx, token) in entry.tokens.iter().enumerate() {
+                        if token.starts_with(synonym) {
+                            term_score = 2;
+                            matched_position = Some(idx);
+                            synonym_hit = true;
+                            break;
+                        }
+                    }
+                    if synonym_hit {
+                        break;
+                    }
+                    for (idx, token) in entry.tokens.iter().enumerate() {
+                        if token.contains(synonym) {
+                            term_score = 1;
+                            matched_position = Some(idx);
+                            synonym_hit = true;
+                            break;
+                        }
+                    }
+                    if synonym_hit {
+                        break;
+                    }
+                }
+                if synonym_hit {
+                    synonym_hits += 1;
+                }
             }
         }
 
@@ -1055,7 +1145,7 @@ fn score_entry(
         if term_score == 0 && term.len() >= 3 {
             // Only for terms 3+ chars
             let max_typos = if term.len() <= 4 { 1 } else { 2 };
-            for token in &entry.tokens {
+            for (idx, token) in entry.tokens.iter().enumerate() {
                 if token.len() >= 3 {
                     if let Some(distance) = edit_distance(term, token, max_typos) {
                         // Score based on edit distance
@@ -1066,6 +1156,7 @@ fn score_entry(
                             _ => 0,
                         };
                         if term_score > 0 {
+                            matched_position = Some(idx);
                             break;
                         }
                     }
@@ -1076,6 +1167,9 @@ fn score_entry(
         if term_score > 0 {
             matched_terms += 1;
             score += term_score;
+            if let Some(pos) = matched_position {
+                matched_positions.push(pos);
+            }
         }
     }
 
@@ -1089,10 +1183,10 @@ fn score_entry(
         score += 3;
     }
 
-    if !query.compact.is_empty() {
-        if id_lower.contains(&query.compact) || url_lower.contains(&query.compact) {
-            score += 2;
-        }
+    if !query.compact.is_empty()
+        && (id_lower.contains(&query.compact) || url_lower.contains(&query.compact))
+    {
+        score += 2;
     }
 
     // Knowledge base boost
@@ -1119,11 +1213,16 @@ fn score_entry(
         }
     }
 
+    // Calculate proximity bonus based on matched token positions
+    let proximity_bonus = calculate_proximity_bonus(&matched_positions);
+    score += proximity_bonus;
+
     if score > 0 {
         Some(MatchScore {
             score,
             matched_terms,
             synonym_hits,
+            proximity_bonus,
         })
     } else {
         None
@@ -1153,6 +1252,7 @@ struct GlobalMatch {
     technology_identifier: String,
     matched_terms: usize,
     synonym_hits: usize,
+    proximity_bonus: i32,
 }
 
 async fn gather_design_guidance(
@@ -1457,5 +1557,305 @@ async fn log_search_query(
     if log.len() > MAX_QUERIES {
         let overflow = log.len() - MAX_QUERIES;
         log.drain(0..overflow);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_proximity_bonus_adjacent_tokens() {
+        // Adjacent tokens (distance = 1) should get +5 bonus
+        let positions = vec![0, 1];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 5, "Adjacent tokens should get +5 bonus");
+    }
+
+    #[test]
+    fn test_proximity_bonus_two_apart() {
+        // Tokens 2 apart (distance = 2) should get +3 bonus
+        let positions = vec![0, 2];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 3, "Tokens 2 apart should get +3 bonus");
+    }
+
+    #[test]
+    fn test_proximity_bonus_three_apart() {
+        // Tokens 3 apart (distance = 3) should get +1 bonus
+        let positions = vec![0, 3];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 1, "Tokens 3 apart should get +1 bonus");
+    }
+
+    #[test]
+    fn test_proximity_bonus_four_apart() {
+        // Tokens 4 apart (distance = 4) should get +1 bonus
+        let positions = vec![0, 4];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 1, "Tokens 4 apart should get +1 bonus");
+    }
+
+    #[test]
+    fn test_proximity_bonus_scattered_tokens() {
+        // Tokens far apart (distance > 4) should get no bonus
+        let positions = vec![0, 10];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 0, "Scattered tokens should get no bonus");
+    }
+
+    #[test]
+    fn test_proximity_bonus_multiple_pairs() {
+        // Multiple consecutive pairs should accumulate bonuses
+        // Positions: [0, 1, 3] -> pairs: (0,1)=+5, (1,3)=+3 = +8 total
+        let positions = vec![0, 1, 3];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 8, "Multiple pairs should accumulate bonuses");
+    }
+
+    #[test]
+    fn test_proximity_bonus_all_adjacent() {
+        // All adjacent tokens: [0, 1, 2, 3] -> pairs: (0,1)=+5, (1,2)=+5, (2,3)=+5 = +15 total
+        let positions = vec![0, 1, 2, 3];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 15, "All adjacent tokens should maximize bonus");
+    }
+
+    #[test]
+    fn test_proximity_bonus_single_token() {
+        // Single token should get no bonus (no pairs)
+        let positions = vec![5];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 0, "Single token should get no bonus");
+    }
+
+    #[test]
+    fn test_proximity_bonus_empty_positions() {
+        // Empty positions should get no bonus
+        let positions = vec![];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 0, "Empty positions should get no bonus");
+    }
+
+    #[test]
+    fn test_proximity_bonus_unsorted_positions() {
+        // Function should handle unsorted positions correctly
+        // [5, 1, 3] -> sorted [1, 3, 5] -> pairs: (1,3)=+3, (3,5)=+3 = +6 total
+        let positions = vec![5, 1, 3];
+        let bonus = calculate_proximity_bonus(&positions);
+        assert_eq!(bonus, 6, "Unsorted positions should be handled correctly");
+    }
+
+    #[test]
+    fn test_edit_distance_exact_match() {
+        // Exact match should return 0
+        let distance = edit_distance("hello", "hello", 2);
+        assert_eq!(distance, Some(0), "Exact match should have distance 0");
+    }
+
+    #[test]
+    fn test_edit_distance_one_char_difference() {
+        // One character difference
+        let distance = edit_distance("hello", "hallo", 2);
+        assert_eq!(distance, Some(1), "One char difference should have distance 1");
+    }
+
+    #[test]
+    fn test_edit_distance_two_chars_difference() {
+        // Two character differences
+        let distance = edit_distance("hello", "hxllx", 2);
+        assert_eq!(distance, Some(2), "Two char difference should have distance 2");
+    }
+
+    #[test]
+    fn test_edit_distance_exceeds_max() {
+        // Distance exceeds max_distance, should return None
+        let distance = edit_distance("hello", "world", 2);
+        assert_eq!(distance, None, "Distance exceeding max should return None");
+    }
+
+    #[test]
+    fn test_edit_distance_insertion() {
+        // Insertion: "hello" -> "helllo" (distance = 1)
+        let distance = edit_distance("hello", "helllo", 2);
+        assert_eq!(distance, Some(1), "Insertion should have distance 1");
+    }
+
+    #[test]
+    fn test_edit_distance_deletion() {
+        // Deletion: "hello" -> "helo" (distance = 1)
+        let distance = edit_distance("hello", "helo", 2);
+        assert_eq!(distance, Some(1), "Deletion should have distance 1");
+    }
+
+    #[test]
+    fn test_edit_distance_empty_strings() {
+        // Empty string comparisons
+        let distance = edit_distance("", "", 2);
+        assert_eq!(distance, Some(0), "Two empty strings should have distance 0");
+
+        let distance = edit_distance("abc", "", 5);
+        assert_eq!(distance, Some(3), "Empty vs non-empty should equal length");
+
+        let distance = edit_distance("", "abc", 5);
+        assert_eq!(distance, Some(3), "Non-empty vs empty should equal length");
+    }
+
+    #[test]
+    fn test_edit_distance_length_diff_exceeds_max() {
+        // If length difference alone exceeds max_distance, should return None early
+        let distance = edit_distance("a", "abcdef", 2);
+        assert_eq!(distance, None, "Large length difference should return None");
+    }
+
+    #[test]
+    fn test_prepare_query_normalization() {
+        let query = prepare_query("  Hello World  ");
+        assert_eq!(query.raw, "hello world");
+        assert_eq!(query.compact, "helloworld");
+        assert!(query.terms.contains(&"hello".to_string()));
+        assert!(query.terms.contains(&"world".to_string()));
+    }
+
+    #[test]
+    fn test_prepare_query_removes_punctuation() {
+        let query = prepare_query("navigation-stack/view");
+        assert!(query.terms.contains(&"navigation".to_string()));
+        assert!(query.terms.contains(&"stack".to_string()));
+        assert!(query.terms.contains(&"view".to_string()));
+    }
+
+    #[test]
+    fn test_prepare_query_expands_abbreviations() {
+        let query = prepare_query("nav btn");
+        // Should have both original and expanded forms
+        assert!(query.terms.contains(&"nav".to_string()));
+        assert!(query.terms.contains(&"navigation".to_string()));
+        assert!(query.terms.contains(&"btn".to_string()));
+        assert!(query.terms.contains(&"button".to_string()));
+    }
+
+    #[test]
+    fn test_prepare_query_synonym_expansion() {
+        let query = prepare_query("list");
+        assert!(query.synonyms.contains_key("list"));
+        let synonyms = query.synonyms.get("list").unwrap();
+        assert!(synonyms.iter().any(|s| s == "table"));
+        assert!(synonyms.iter().any(|s| s == "collection"));
+    }
+
+    #[test]
+    fn test_symbol_kind_boost_struct() {
+        assert_eq!(symbol_kind_boost(Some("struct")), 6);
+        assert_eq!(symbol_kind_boost(Some("class")), 6);
+        assert_eq!(symbol_kind_boost(Some("protocol")), 6);
+        assert_eq!(symbol_kind_boost(Some("actor")), 6);
+    }
+
+    #[test]
+    fn test_symbol_kind_boost_view() {
+        assert_eq!(symbol_kind_boost(Some("view")), 5);
+        assert_eq!(symbol_kind_boost(Some("typealias")), 5);
+    }
+
+    #[test]
+    fn test_symbol_kind_boost_enum() {
+        assert_eq!(symbol_kind_boost(Some("enum")), 4);
+        assert_eq!(symbol_kind_boost(Some("enumeration")), 4);
+    }
+
+    #[test]
+    fn test_symbol_kind_boost_function() {
+        assert_eq!(symbol_kind_boost(Some("func")), 3);
+        assert_eq!(symbol_kind_boost(Some("method")), 3);
+        assert_eq!(symbol_kind_boost(Some("function")), 3);
+    }
+
+    #[test]
+    fn test_symbol_kind_boost_unknown() {
+        assert_eq!(symbol_kind_boost(Some("unknown")), 0);
+        assert_eq!(symbol_kind_boost(None), 0);
+    }
+
+    #[test]
+    fn test_common_symbol_boost_high_priority() {
+        assert_eq!(common_symbol_boost("Button"), 8);
+        assert_eq!(common_symbol_boost("Text"), 8);
+        assert_eq!(common_symbol_boost("List"), 8);
+        assert_eq!(common_symbol_boost("Image"), 8);
+    }
+
+    #[test]
+    fn test_common_symbol_boost_medium_priority() {
+        assert_eq!(common_symbol_boost("NavigationStack"), 7);
+        assert_eq!(common_symbol_boost("TabView"), 7);
+        assert_eq!(common_symbol_boost("TextField"), 7);
+    }
+
+    #[test]
+    fn test_common_symbol_boost_low_priority() {
+        assert_eq!(common_symbol_boost("Color"), 4);
+        assert_eq!(common_symbol_boost("Font"), 4);
+    }
+
+    #[test]
+    fn test_common_symbol_boost_case_insensitive() {
+        assert_eq!(common_symbol_boost("button"), 8);
+        assert_eq!(common_symbol_boost("BUTTON"), 8);
+        assert_eq!(common_symbol_boost("BuTtOn"), 8);
+    }
+
+    #[test]
+    fn test_common_symbol_boost_unknown() {
+        assert_eq!(common_symbol_boost("UnknownSymbol"), 0);
+        assert_eq!(common_symbol_boost("CustomView"), 0);
+    }
+
+    #[test]
+    fn test_trim_with_ellipsis_short_text() {
+        let result = trim_with_ellipsis("short", 100);
+        assert_eq!(result, "short");
+    }
+
+    #[test]
+    fn test_trim_with_ellipsis_long_text() {
+        let text = "This is a very long text that should be trimmed";
+        let result = trim_with_ellipsis(text, 20);
+        assert_eq!(result, "This is a very long ...");
+        assert_eq!(result.len(), 23); // 20 chars + "..."
+    }
+
+    #[test]
+    fn test_trim_with_ellipsis_exact_length() {
+        let text = "exactly twenty chars";
+        let result = trim_with_ellipsis(text, 20);
+        assert_eq!(result, "exactly twenty chars");
+    }
+
+    #[test]
+    fn test_dedup_key_normal_path() {
+        let key = dedup_key("/documentation/swiftui/button", "Button");
+        assert_eq!(key, "/documentation/swiftui/button");
+    }
+
+    #[test]
+    fn test_dedup_key_unknown_path() {
+        let key = dedup_key("(unknown path)", "Button");
+        assert_eq!(key, "unknown::button");
+    }
+
+    #[test]
+    fn test_dedup_key_case_normalization() {
+        let key1 = dedup_key("/Documentation/SwiftUI/Button", "Button");
+        let key2 = dedup_key("/documentation/swiftui/button", "Button");
+        assert_eq!(key1, key2, "Dedup keys should be case-normalized");
+    }
+
+    #[test]
+    fn test_is_design_material() {
+        assert!(is_design_material("/design/human-interface-guidelines/buttons"));
+        assert!(is_design_material("/documentation/design/components"));
+        assert!(!is_design_material("/documentation/swiftui/button"));
+        assert!(!is_design_material("/tutorials/swiftui"));
     }
 }

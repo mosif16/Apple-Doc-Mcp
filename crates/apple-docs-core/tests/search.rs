@@ -157,9 +157,11 @@ async fn search_symbols_global_scope_reads_cached_frameworks() {
     let mut technologies_map = HashMap::new();
     technologies_map.insert(technology.identifier.clone(), technology.clone());
 
+    let now = OffsetDateTime::now_utc();
     let technologies_entry = CacheEntry {
         value: technologies_map,
-        stored_at: OffsetDateTime::now_utc(),
+        stored_at: now,
+        last_accessed: now,
     };
     fs::write(
         cache_dir.join("technologies.json"),
@@ -170,7 +172,8 @@ async fn search_symbols_global_scope_reads_cached_frameworks() {
 
     let framework_entry = CacheEntry {
         value: framework.clone(),
-        stored_at: OffsetDateTime::now_utc(),
+        stored_at: now,
+        last_accessed: now,
     };
     fs::write(
         cache_dir.join("SwiftUI.json"),

@@ -86,9 +86,11 @@ mod tests {
     #[tokio::test]
     async fn stub_run_completes() {
         let tmp = tempdir().expect("tempdir");
-        let mut config = ServerConfig::default();
-        config.cache_dir = Some(tmp.path().to_path_buf());
-        config.mode = ServerMode::Headless;
+        let config = ServerConfig {
+            cache_dir: Some(tmp.path().to_path_buf()),
+            mode: ServerMode::Headless,
+            ..Default::default()
+        };
         let result = run(config).await;
         assert!(result.is_ok());
     }

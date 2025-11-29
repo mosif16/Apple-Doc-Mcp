@@ -181,8 +181,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let technologies = context.client.get_technologies().await?;
     let mut frameworks: Vec<Technology> = technologies
         .values()
-        .cloned()
         .filter(|tech| tech.kind == "symbol" && tech.role == "collection")
+        .cloned()
         .collect();
 
     // Apply category filter
@@ -221,7 +221,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         }
     }
 
-    let total_pages = (frameworks.len().max(1) + page_size - 1) / page_size;
+    let total_pages = frameworks.len().max(1).div_ceil(page_size);
     let current_page = page.min(total_pages);
     let start = (current_page - 1) * page_size;
     let page_items = frameworks

@@ -13,6 +13,8 @@ use serde_json::Value;
 use time::OffsetDateTime;
 use tokio::sync::{Mutex, RwLock};
 
+use crate::services::design_guidance::DesignSection;
+
 #[derive(Clone)]
 pub struct AppContext {
     pub client: Arc<AppleDocsClient>,
@@ -42,6 +44,11 @@ impl AppContext {
     pub async fn telemetry_snapshot(&self) -> Vec<TelemetryEntry> {
         self.state.telemetry_log.lock().await.clone()
     }
+
+    /// Get current cache statistics from the client
+    pub fn cache_stats(&self) -> apple_docs_client::CombinedCacheStats {
+        self.client.cache_stats()
+    }
 }
 
 #[derive(Default)]
@@ -55,6 +62,9 @@ pub struct ServerState {
     pub last_discovery: RwLock<Option<DiscoverySnapshot>>,
     pub telemetry_log: Mutex<Vec<TelemetryEntry>>,
     pub recent_queries: Mutex<Vec<SearchQueryLog>>,
+    /// Pre-cached design guidance for the active technology
+    /// Maps design guidance slug (e.g., "design/human-interface-guidelines/buttons") to sections
+    pub design_guidance_cache: RwLock<HashMap<String, Arc<DesignSection>>>,
 }
 
 #[derive(Clone)]

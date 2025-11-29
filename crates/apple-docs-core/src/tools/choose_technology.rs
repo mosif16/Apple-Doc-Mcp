@@ -54,8 +54,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
 
     let candidates: Vec<Technology> = technologies
         .values()
-        .cloned()
         .filter(|tech| tech.kind == "symbol" && tech.role == "collection")
+        .cloned()
         .collect();
 
     let chosen = resolve_candidate(&candidates, &args);
@@ -83,7 +83,32 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     context.state.framework_index.write().await.take();
     context.state.expanded_identifiers.lock().await.clear();
 
+    // Clear design guidance cache when switching technologies
+    context.state.design_guidance_cache.write().await.clear();
+
     let has_design_mapping = design_guidance::has_primer_mapping(&technology);
+
+    // Pre-cache design guidance for this technology in the background
+    // This populates both the global CACHE and ServerState cache for fast lookups
+    if has_design_mapping {
+        let context_clone = Arc::clone(&context);
+        let tech_clone = technology.clone();
+        tokio::spawn(async move {
+            if let Err(e) = design_guidance::precache_for_technology(&context_clone, &tech_clone).await {
+                tracing::warn!(
+                    target: "choose_technology.precache",
+                    technology = %tech_clone.title,
+                    "Failed to pre-cache design guidance: {e:#}"
+                );
+            } else {
+                tracing::debug!(
+                    target: "choose_technology.precache",
+                    technology = %tech_clone.title,
+                    "Successfully pre-cached design guidance"
+                );
+            }
+        });
+    }
     let lines = vec![
         markdown::header(1, "✅ Technology Selected"),
         String::new(),

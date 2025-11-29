@@ -50,7 +50,7 @@ where
     Arc::new(move |context, value| {
         let ctx = context.clone();
         let fut = handler(ctx, value);
-        Box::pin(async move { fut.await })
+        Box::pin(fut)
     })
 }
 

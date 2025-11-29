@@ -1,5 +1,8 @@
-mod cache;
+pub mod cache;
 pub mod types;
+
+// Re-export commonly used cache types
+pub use cache::CombinedCacheStats;
 
 use std::{path::PathBuf, time::Duration as StdDuration};
 
@@ -55,6 +58,12 @@ pub struct AppleDocsClient {
     frameworks_lock: Mutex<()>,
     memory_cache: MemoryCache<Vec<u8>>,
     config: ClientConfig,
+}
+
+impl Default for AppleDocsClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AppleDocsClient {
@@ -180,6 +189,14 @@ impl AppleDocsClient {
         self.memory_cache.clear();
     }
 
+    /// Get combined cache statistics from both memory and disk caches
+    pub fn cache_stats(&self) -> cache::CombinedCacheStats {
+        cache::CombinedCacheStats {
+            memory: self.memory_cache.stats().snapshot(),
+            disk: self.disk_cache.stats().snapshot(),
+        }
+    }
+
     pub async fn load_document(&self, path: &str) -> Result<Value> {
         let clean = path.trim_start_matches('/');
         let safe = clean.replace('/', "__");
@@ -201,7 +218,7 @@ impl AppleDocsClient {
     {
         let url = format!("{BASE_URL}/{path}");
 
-        if let Some(bytes) = self.memory_cache.get(&url) {
+        if let Some(bytes) = self.memory_cache.get_with_size(&url, |v| v.len()) {
             let value = serde_json::from_slice(&bytes)
                 .with_context(|| format!("failed to parse cached json for {url}"))?;
             return Ok(value);

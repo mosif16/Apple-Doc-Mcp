@@ -66,7 +66,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let identifier = active
         .identifier
         .split('/')
-        .last()
+        .next_back()
         .context("Invalid technology identifier")?;
 
     let normalized = normalize_path(&args.path, identifier);
@@ -504,10 +504,16 @@ fn trim_with_ellipsis(text: &str, max: usize) -> String {
     if text.len() <= max {
         text.to_string()
     } else {
-        format!("{}...", &text[..max])
+        // Find a valid UTF-8 character boundary at or before max
+        let mut end = max;
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &text[..end])
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_symbol_summary(
     symbol: &SymbolData,
     kind: &str,

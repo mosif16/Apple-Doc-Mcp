@@ -109,6 +109,8 @@ pub struct SearchResult {
 pub struct CacheEntry<T> {
     pub value: T,
     pub stored_at: OffsetDateTime,
+    #[serde(default = "OffsetDateTime::now_utc")]
+    pub last_accessed: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
