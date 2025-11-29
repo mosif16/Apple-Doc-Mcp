@@ -1,7 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
-use apple_docs_client::types::{extract_text, Technology};
+use apple_docs_client::{
+    types::{extract_text, Technology},
+    DocsPlatform, AndroidCategory,
+};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::json;
@@ -142,7 +145,7 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "discover_technologies".to_string(),
-            description: "Explore and filter available Apple technologies/frameworks".to_string(),
+            description: "Explore and filter available technologies/frameworks for the active platform (Apple, Android, or Flutter). Use switch_platform to change platforms.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -152,8 +155,7 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                     },
                     "category": {
                         "type": "string",
-                        "enum": ["ui", "data", "network", "media", "system", "accessibility", "testing", "developer"],
-                        "description": "Filter by category: ui (SwiftUI, UIKit), data (CoreData, CloudKit), network, media (AV, Metal), system (Location, Notifications), accessibility, testing, developer"
+                        "description": "Filter by category. Apple: ui, data, network, media, system, accessibility, testing, developer. Android: compose, architecture, ui, core, media, connectivity, security, test. Flutter: widgets, material, cupertino, animation, painting, etc."
                     },
                     "sortBy": {
                         "type": "string",
@@ -167,12 +169,17 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;
-            handle(context, args).await
+            let platform = *context.state.active_platform.read().await;
+            match platform {
+                DocsPlatform::Apple => handle_apple(context, args).await,
+                DocsPlatform::Android => handle_android(context, args).await,
+                DocsPlatform::Flutter => handle_flutter(context, args).await,
+            }
         }),
     )
 }
 
-async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+async fn handle_apple(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let page = args.page.unwrap_or(1).max(1);
     let page_size = args.page_size.unwrap_or(25).clamp(1, 100);
     let category_lower = args.category.as_ref().map(|c| c.to_lowercase());
@@ -491,4 +498,267 @@ fn matches_framework_query(title: &str, query: &str) -> bool {
     let query_compact: String = query_lower.chars().filter(|c| !c.is_whitespace()).collect();
 
     title_compact.contains(&query_compact)
+}
+
+// ============================================================================
+// Android Platform Handler
+// ============================================================================
+
+async fn handle_android(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+    let page = args.page.unwrap_or(1).max(1);
+    let page_size = args.page_size.unwrap_or(25).clamp(1, 100);
+    let category_filter = args.category.as_ref().map(|c| c.to_lowercase());
+    let sort_by = args.sort_by.as_deref().unwrap_or("alphabetical");
+
+    let mut libraries = context.android_client.get_libraries().await?;
+
+    // Apply category filter
+    if let Some(cat) = &category_filter {
+        let android_cat = match cat.as_str() {
+            "compose" => Some(AndroidCategory::Compose),
+            "architecture" => Some(AndroidCategory::Architecture),
+            "ui" => Some(AndroidCategory::UI),
+            "core" => Some(AndroidCategory::Core),
+            "media" => Some(AndroidCategory::Media),
+            "connectivity" => Some(AndroidCategory::Connectivity),
+            "security" => Some(AndroidCategory::Security),
+            "test" | "testing" => Some(AndroidCategory::Test),
+            _ => None,
+        };
+        if let Some(category) = android_cat {
+            libraries.retain(|lib| lib.category == category);
+        }
+    }
+
+    // Apply query filter
+    if let Some(query) = &args.query {
+        let query_lower = query.to_lowercase();
+        libraries.retain(|lib| {
+            lib.name.to_lowercase().contains(&query_lower)
+                || lib.artifact_id.to_lowercase().contains(&query_lower)
+                || lib.description.as_ref().map(|d| d.to_lowercase().contains(&query_lower)).unwrap_or(false)
+                || lib.packages.iter().any(|p| p.to_lowercase().contains(&query_lower))
+        });
+    }
+
+    // Sort
+    match sort_by {
+        "relevance" => {
+            libraries.sort_by(|a, b| {
+                let score_a = get_android_relevance(&a.name, &args.query);
+                let score_b = get_android_relevance(&b.name, &args.query);
+                score_b.cmp(&score_a).then_with(|| a.name.cmp(&b.name))
+            });
+        }
+        _ => {
+            libraries.sort_by(|a, b| a.name.cmp(&b.name));
+        }
+    }
+
+    let total_pages = (libraries.len().max(1) + page_size - 1) / page_size;
+    let current_page = page.min(total_pages);
+    let start = (current_page - 1) * page_size;
+    let page_items: Vec<_> = libraries.iter().skip(start).take(page_size).collect();
+
+    // Build filter description
+    let mut filter_parts = Vec::new();
+    if let Some(query) = &args.query {
+        filter_parts.push(format!("\"{}\"", query));
+    }
+    if let Some(category) = &args.category {
+        filter_parts.push(format!("category: {}", category));
+    }
+    let filter_desc = if filter_parts.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", filter_parts.join(", "))
+    };
+
+    let mut lines = vec![
+        markdown::header(1, &format!("Discover Android Libraries{}", filter_desc)),
+        String::new(),
+        markdown::bold("Platform", "Android (Kotlin/Java)"),
+        markdown::bold("Matches", &libraries.len().to_string()),
+        markdown::bold("Page", &format!("{} / {}", current_page, total_pages.max(1))),
+        String::new(),
+    ];
+
+    if args.query.is_none() && args.category.is_none() {
+        lines.push("*Tip: Filter by category: `discover_technologies { \"category\": \"compose\" }`*".to_string());
+        lines.push("*Categories: compose, architecture, ui, core, media, connectivity, security, test*".to_string());
+        lines.push(String::new());
+    }
+
+    lines.push(markdown::header(2, "Available Libraries"));
+
+    for lib in &page_items {
+        lines.push(format!("### {} [{}]", lib.name, lib.category));
+        if let Some(desc) = &lib.description {
+            lines.push(format!("   {}", trim_with_ellipsis(desc, 180)));
+        }
+        lines.push(format!("   • **Artifact:** {}:{}", lib.group_id, lib.artifact_id));
+        lines.push(format!("   • **Packages:** {}", lib.packages.join(", ")));
+        lines.push(format!("   • **Select:** `choose_technology \"{}\"`", lib.name));
+        lines.push(String::new());
+    }
+
+    lines.push(String::new());
+    lines.push("## Next Step".to_string());
+    lines.push("Use `choose_technology` to select a library, or `search_symbols` to search across all Android APIs.".to_string());
+
+    let metadata = json!({
+        "platform": "android",
+        "totalMatches": libraries.len(),
+        "page": current_page,
+        "pageSize": page_size,
+        "pageItems": page_items.len(),
+        "query": args.query,
+        "category": args.category,
+    });
+
+    Ok(text_response(lines).with_metadata(metadata))
+}
+
+fn get_android_relevance(name: &str, query: &Option<String>) -> i32 {
+    let name_lower = name.to_lowercase();
+
+    // Base scores for popular libraries
+    let mut score = match name_lower.as_str() {
+        "compose ui" | "compose material3" => 100,
+        "compose foundation" | "compose animation" => 95,
+        "viewmodel" | "room" | "hilt" => 90,
+        "retrofit" | "okhttp" => 85,
+        "recyclerview" | "constraintlayout" => 80,
+        "navigation" | "datastore" => 75,
+        _ if name_lower.contains("compose") => 70,
+        _ => 50,
+    };
+
+    if let Some(q) = query {
+        let q_lower = q.to_lowercase();
+        if name_lower == q_lower {
+            score += 50;
+        } else if name_lower.starts_with(&q_lower) {
+            score += 30;
+        } else if name_lower.contains(&q_lower) {
+            score += 15;
+        }
+    }
+
+    score
+}
+
+// ============================================================================
+// Flutter Platform Handler
+// ============================================================================
+
+async fn handle_flutter(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+    let page = args.page.unwrap_or(1).max(1);
+    let page_size = args.page_size.unwrap_or(25).clamp(1, 100);
+    let category_filter = args.category.as_ref().map(|c| c.to_lowercase());
+
+    let index = context.flutter_client.get_index().await?;
+
+    // Filter to only libraries
+    let mut libraries: Vec<_> = index
+        .iter()
+        .filter(|item| item.kind.as_deref() == Some("library"))
+        .cloned()
+        .collect();
+
+    // Apply category filter (Flutter libraries often have category prefixes)
+    if let Some(cat) = &category_filter {
+        libraries.retain(|lib| {
+            let name_lower = lib.name.to_lowercase();
+            let qualified_lower = lib.qualified_name.to_lowercase();
+            name_lower.contains(cat) || qualified_lower.contains(cat)
+        });
+    }
+
+    // Apply query filter
+    if let Some(query) = &args.query {
+        let query_lower = query.to_lowercase();
+        libraries.retain(|lib| {
+            lib.name.to_lowercase().contains(&query_lower)
+                || lib.qualified_name.to_lowercase().contains(&query_lower)
+                || lib.description.as_ref().map(|d| d.to_lowercase().contains(&query_lower)).unwrap_or(false)
+        });
+    }
+
+    // Sort by relevance (package_rank) or alphabetically
+    let sort_by = args.sort_by.as_deref().unwrap_or("relevance");
+    match sort_by {
+        "alphabetical" => {
+            libraries.sort_by(|a, b| a.name.cmp(&b.name));
+        }
+        _ => {
+            libraries.sort_by(|a, b| {
+                let score_a = a.package_rank.unwrap_or(0);
+                let score_b = b.package_rank.unwrap_or(0);
+                score_b.cmp(&score_a).then_with(|| a.name.cmp(&b.name))
+            });
+        }
+    }
+
+    let total_pages = (libraries.len().max(1) + page_size - 1) / page_size;
+    let current_page = page.min(total_pages);
+    let start = (current_page - 1) * page_size;
+    let page_items: Vec<_> = libraries.iter().skip(start).take(page_size).collect();
+
+    // Build filter description
+    let mut filter_parts = Vec::new();
+    if let Some(query) = &args.query {
+        filter_parts.push(format!("\"{}\"", query));
+    }
+    if let Some(category) = &args.category {
+        filter_parts.push(format!("category: {}", category));
+    }
+    let filter_desc = if filter_parts.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", filter_parts.join(", "))
+    };
+
+    let mut lines = vec![
+        markdown::header(1, &format!("Discover Flutter Libraries{}", filter_desc)),
+        String::new(),
+        markdown::bold("Platform", "Flutter (Dart)"),
+        markdown::bold("Matches", &libraries.len().to_string()),
+        markdown::bold("Page", &format!("{} / {}", current_page, total_pages.max(1))),
+        String::new(),
+    ];
+
+    if args.query.is_none() && args.category.is_none() {
+        lines.push("*Tip: Filter by category: `discover_technologies { \"category\": \"widgets\" }`*".to_string());
+        lines.push("*Common categories: widgets, material, cupertino, animation, painting, rendering, services*".to_string());
+        lines.push(String::new());
+    }
+
+    lines.push(markdown::header(2, "Available Libraries"));
+
+    for lib in &page_items {
+        lines.push(format!("### {}", lib.name));
+        if let Some(desc) = &lib.description {
+            lines.push(format!("   {}", trim_with_ellipsis(desc, 180)));
+        }
+        lines.push(format!("   • **Path:** {}", lib.href));
+        lines.push(format!("   • **Select:** `choose_technology \"{}\"`", lib.name));
+        lines.push(String::new());
+    }
+
+    lines.push(String::new());
+    lines.push("## Next Step".to_string());
+    lines.push("Use `choose_technology` to select a library, or `search_symbols` to search Flutter APIs.".to_string());
+
+    let metadata = json!({
+        "platform": "flutter",
+        "totalMatches": libraries.len(),
+        "page": current_page,
+        "pageSize": page_size,
+        "pageItems": page_items.len(),
+        "query": args.query,
+        "category": args.category,
+    });
+
+    Ok(text_response(lines).with_metadata(metadata))
 }

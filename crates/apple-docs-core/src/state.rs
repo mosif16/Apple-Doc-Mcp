@@ -5,7 +5,7 @@ use std::{
 
 use apple_docs_client::{
     types::{FrameworkData, ReferenceData, SymbolData, Technology},
-    AppleDocsClient,
+    AppleDocsClient, AndroidDocsClient, FlutterDocsClient, DocsPlatform,
 };
 use futures::future::BoxFuture;
 use serde::Serialize;
@@ -16,6 +16,8 @@ use tokio::sync::{Mutex, RwLock};
 #[derive(Clone)]
 pub struct AppContext {
     pub client: Arc<AppleDocsClient>,
+    pub android_client: Arc<AndroidDocsClient>,
+    pub flutter_client: Arc<FlutterDocsClient>,
     pub state: Arc<ServerState>,
     pub tools: Arc<ToolRegistry>,
 }
@@ -24,6 +26,22 @@ impl AppContext {
     pub fn new(client: AppleDocsClient) -> Self {
         Self {
             client: Arc::new(client),
+            android_client: Arc::new(AndroidDocsClient::new()),
+            flutter_client: Arc::new(FlutterDocsClient::new()),
+            state: Arc::new(ServerState::default()),
+            tools: Arc::new(ToolRegistry::default()),
+        }
+    }
+
+    pub fn with_all_clients(
+        apple: AppleDocsClient,
+        android: AndroidDocsClient,
+        flutter: FlutterDocsClient,
+    ) -> Self {
+        Self {
+            client: Arc::new(apple),
+            android_client: Arc::new(android),
+            flutter_client: Arc::new(flutter),
             state: Arc::new(ServerState::default()),
             tools: Arc::new(ToolRegistry::default()),
         }
@@ -46,6 +64,9 @@ impl AppContext {
 
 #[derive(Default)]
 pub struct ServerState {
+    /// Currently active documentation platform
+    pub active_platform: RwLock<DocsPlatform>,
+    /// Apple: Currently active technology/framework
     pub active_technology: RwLock<Option<Technology>>,
     pub framework_cache: RwLock<Option<FrameworkData>>,
     pub framework_index: RwLock<Option<Vec<FrameworkIndexEntry>>>,
@@ -55,6 +76,10 @@ pub struct ServerState {
     pub last_discovery: RwLock<Option<DiscoverySnapshot>>,
     pub telemetry_log: Mutex<Vec<TelemetryEntry>>,
     pub recent_queries: Mutex<Vec<SearchQueryLog>>,
+    /// Android: Currently active library
+    pub active_android_library: RwLock<Option<String>>,
+    /// Flutter: Currently active library
+    pub active_flutter_library: RwLock<Option<String>>,
 }
 
 #[derive(Clone)]

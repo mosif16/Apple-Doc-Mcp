@@ -10,6 +10,7 @@ mod discover;
 mod get_documentation;
 mod how_do_i;
 mod search_symbols;
+mod switch_platform;
 
 pub async fn register_tools(context: Arc<AppContext>) {
     let tools = [
@@ -19,6 +20,7 @@ pub async fn register_tools(context: Arc<AppContext>) {
         get_documentation::definition(),
         how_do_i::definition(),
         search_symbols::definition(),
+        switch_platform::definition(),
     ];
 
     let registry = context.tools.clone();

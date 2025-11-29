@@ -1,5 +1,12 @@
 mod cache;
 pub mod types;
+pub mod android;
+pub mod flutter;
+pub mod platform;
+
+pub use android::{AndroidDocsClient, AndroidLibrary, AndroidCategory};
+pub use flutter::{FlutterDocsClient, FlutterIndexItem, FlutterLibrary};
+pub use platform::{DocsPlatform, UnifiedSearchResult, UnifiedTechnology};
 
 use std::{path::PathBuf, time::Duration as StdDuration};
 
