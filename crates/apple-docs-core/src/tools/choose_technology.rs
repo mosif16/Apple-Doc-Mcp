@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use apple_docs_client::types::Technology;
+use apple_docs_client::{types::Technology, DocsPlatform};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -22,30 +22,163 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "choose_technology".to_string(),
-            description: "Select the framework/technology to scope all subsequent searches"
+            description: "Select the framework/library to scope all subsequent searches (works with current platform)"
                 .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "identifier": {
                         "type": "string",
-                        "description": "Technology identifier (doc://...)"
+                        "description": "Technology identifier (doc://...) for Apple, or library name for Android/Flutter"
                     },
                     "name": {
                         "type": "string",
-                        "description": "Technology title (e.g. SwiftUI)"
+                        "description": "Technology/library title (e.g. SwiftUI, Compose UI, widgets)"
                     }
                 }
             }),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;
-            handle(context, args).await
+            let platform = *context.state.active_platform.read().await;
+            match platform {
+                DocsPlatform::Apple => handle_apple(context, args).await,
+                DocsPlatform::Android => handle_android(context, args).await,
+                DocsPlatform::Flutter => handle_flutter(context, args).await,
+            }
         }),
     )
 }
 
-async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+async fn handle_android(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+    let name = args.name.as_ref().or(args.identifier.as_ref())
+        .ok_or_else(|| anyhow::anyhow!("Please provide a library name"))?;
+
+    if let Some(lib) = context.android_client.get_library(name).await? {
+        *context.state.active_android_library.write().await = Some(lib.name.clone());
+
+        let lines = vec![
+            markdown::header(1, "✅ Android Library Selected"),
+            String::new(),
+            markdown::bold("Name", &lib.name),
+            markdown::bold("Category", &lib.category.to_string()),
+            markdown::bold("Artifact", &format!("{}:{}", lib.group_id, lib.artifact_id)),
+            String::new(),
+            markdown::header(2, "Next actions"),
+            "• `search_symbols { \"query\": \"keyword\" }` — search Android APIs".to_string(),
+            "• `discover_technologies` — browse other libraries".to_string(),
+        ];
+
+        let metadata = json!({
+            "platform": "android",
+            "resolved": true,
+            "name": lib.name,
+            "category": lib.category.to_string(),
+            "artifact": format!("{}:{}", lib.group_id, lib.artifact_id),
+        });
+
+        return Ok(text_response(lines).with_metadata(metadata));
+    }
+
+    // Not found - show suggestions
+    let libraries = context.android_client.get_libraries().await?;
+    let name_lower = name.to_lowercase();
+    let suggestions: Vec<_> = libraries
+        .iter()
+        .filter(|lib| lib.name.to_lowercase().contains(&name_lower) || lib.artifact_id.to_lowercase().contains(&name_lower))
+        .take(5)
+        .map(|lib| format!("• {} — `choose_technology \"{}\"`", lib.name, lib.name))
+        .collect();
+
+    let mut lines = vec![
+        markdown::header(1, "❌ Library Not Found"),
+        format!("Could not find Android library \"{}\".", name),
+        String::new(),
+        markdown::header(2, "Suggestions"),
+    ];
+
+    if suggestions.is_empty() {
+        lines.push("• Use `discover_technologies` to browse available libraries".to_string());
+    } else {
+        lines.extend(suggestions);
+    }
+
+    Ok(text_response(lines).with_metadata(json!({
+        "platform": "android",
+        "resolved": false,
+        "searchTerm": name,
+    })))
+}
+
+async fn handle_flutter(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+    let name = args.name.as_ref().or(args.identifier.as_ref())
+        .ok_or_else(|| anyhow::anyhow!("Please provide a library name"))?;
+
+    let index = context.flutter_client.get_index().await?;
+    let name_lower = name.to_lowercase();
+
+    // Find matching library
+    let library = index.iter()
+        .find(|item| {
+            item.kind.as_deref() == Some("library") &&
+            (item.name.to_lowercase() == name_lower || item.qualified_name.to_lowercase() == name_lower)
+        });
+
+    if let Some(lib) = library {
+        *context.state.active_flutter_library.write().await = Some(lib.name.clone());
+
+        let lines = vec![
+            markdown::header(1, "✅ Flutter Library Selected"),
+            String::new(),
+            markdown::bold("Name", &lib.name),
+            markdown::bold("Path", &lib.href),
+            String::new(),
+            markdown::header(2, "Next actions"),
+            "• `search_symbols { \"query\": \"keyword\" }` — search Flutter APIs".to_string(),
+            "• `discover_technologies` — browse other libraries".to_string(),
+        ];
+
+        let metadata = json!({
+            "platform": "flutter",
+            "resolved": true,
+            "name": lib.name,
+            "href": lib.href,
+        });
+
+        return Ok(text_response(lines).with_metadata(metadata));
+    }
+
+    // Not found - show suggestions
+    let suggestions: Vec<_> = index.iter()
+        .filter(|item| {
+            item.kind.as_deref() == Some("library") &&
+            (item.name.to_lowercase().contains(&name_lower) || item.qualified_name.to_lowercase().contains(&name_lower))
+        })
+        .take(5)
+        .map(|lib| format!("• {} — `choose_technology \"{}\"`", lib.name, lib.name))
+        .collect();
+
+    let mut lines = vec![
+        markdown::header(1, "❌ Library Not Found"),
+        format!("Could not find Flutter library \"{}\".", name),
+        String::new(),
+        markdown::header(2, "Suggestions"),
+    ];
+
+    if suggestions.is_empty() {
+        lines.push("• Use `discover_technologies` to browse available libraries".to_string());
+    } else {
+        lines.extend(suggestions);
+    }
+
+    Ok(text_response(lines).with_metadata(json!({
+        "platform": "flutter",
+        "resolved": false,
+        "searchTerm": name,
+    })))
+}
+
+async fn handle_apple(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let technologies = context
         .client
         .get_technologies()

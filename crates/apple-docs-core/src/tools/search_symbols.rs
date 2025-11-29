@@ -5,8 +5,11 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use apple_docs_client::types::{
-    extract_text, format_platforms, FrameworkData, PlatformInfo, ReferenceData, Technology,
+use apple_docs_client::{
+    types::{
+        extract_text, format_platforms, FrameworkData, PlatformInfo, ReferenceData, Technology,
+    },
+    DocsPlatform,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -267,27 +270,32 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
         ToolDefinition {
             name: "search_symbols".to_string(),
             description:
-                "Search symbols within the selected technology or across all Apple documentation"
+                "Search symbols within the active platform (Apple, Android, or Flutter). Use switch_platform to change platforms."
                     .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "required": ["query"],
                 "properties": {
-                    "query": {"type": "string"},
-                    "maxResults": {"type": "number"},
-                    "platform": {"type": "string"},
-                    "symbolType": {"type": "string"},
+                    "query": {"type": "string", "description": "Search query for finding APIs, classes, functions, etc."},
+                    "maxResults": {"type": "number", "description": "Maximum number of results to return (default: 20)"},
+                    "platform": {"type": "string", "description": "Filter by OS platform (e.g., 'iOS', 'macOS' for Apple; 'android' for Android)"},
+                    "symbolType": {"type": "string", "description": "Filter by symbol type (class, function, property, etc.)"},
                     "scope": {
                         "type": "string",
                         "enum": ["technology", "global"],
-                        "description": "Set to \"global\" to search every technology instead of only the active one"
+                        "description": "Set to \"global\" to search all libraries instead of only the active one"
                     }
                 }
             }),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;
-            handle(context, args).await
+            let platform = *context.state.active_platform.read().await;
+            match platform {
+                DocsPlatform::Apple => handle(context, args).await,
+                DocsPlatform::Android => handle_android_search(context, args).await,
+                DocsPlatform::Flutter => handle_flutter_search(context, args).await,
+            }
         }),
     )
 }
@@ -1458,4 +1466,117 @@ async fn log_search_query(
         let overflow = log.len() - MAX_QUERIES;
         log.drain(0..overflow);
     }
+}
+
+// ============================================================================
+// Android Search Handler
+// ============================================================================
+
+async fn handle_android_search(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+    let max_results = args.max_results.unwrap_or(20).max(1);
+    let results = context.android_client.search(&args.query, max_results).await?;
+
+    let mut lines = vec![
+        markdown::header(1, &format!("🔍 Android Search Results for \"{}\"", args.query)),
+        String::new(),
+        markdown::bold("Platform", "Android (Kotlin/Java)"),
+        markdown::bold("Matches", &results.len().to_string()),
+        String::new(),
+    ];
+
+    if results.is_empty() {
+        lines.push("No libraries matched your query.".to_string());
+        lines.push("Try different keywords or use `discover_technologies` to browse available libraries.".to_string());
+    } else {
+        lines.push(markdown::header(2, "Libraries"));
+        lines.push(String::new());
+
+        for lib in &results {
+            lines.push(format!("### {} [{}]", lib.name, lib.category));
+            if let Some(desc) = &lib.description {
+                lines.push(format!("   {}", desc));
+            }
+            lines.push(format!("   • **Artifact:** {}:{}", lib.group_id, lib.artifact_id));
+
+            // Generate reference URLs for packages
+            if !lib.packages.is_empty() {
+                let package = &lib.packages[0];
+                let url = apple_docs_client::AndroidDocsClient::get_reference_url(package);
+                lines.push(format!("   • **Docs:** [{}]({})", package, url));
+            }
+
+            lines.push(format!("   • **Select:** `choose_technology \"{}\"`", lib.name));
+            lines.push(String::new());
+        }
+    }
+
+    let metadata = json!({
+        "platform": "android",
+        "query": args.query,
+        "matchCount": results.len(),
+        "maxResults": max_results,
+    });
+
+    log_search_query(&context, None, "android", &args.query, results.len()).await;
+
+    Ok(text_response(lines).with_metadata(metadata))
+}
+
+// ============================================================================
+// Flutter Search Handler
+// ============================================================================
+
+async fn handle_flutter_search(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+    let max_results = args.max_results.unwrap_or(20).max(1);
+    let results = context.flutter_client.search(&args.query, max_results).await?;
+
+    let mut lines = vec![
+        markdown::header(1, &format!("🔍 Flutter Search Results for \"{}\"", args.query)),
+        String::new(),
+        markdown::bold("Platform", "Flutter (Dart)"),
+        markdown::bold("Matches", &results.len().to_string()),
+        String::new(),
+    ];
+
+    if results.is_empty() {
+        lines.push("No symbols matched your query.".to_string());
+        lines.push("Try different keywords or use `discover_technologies` to browse Flutter libraries.".to_string());
+    } else {
+        lines.push(markdown::header(2, "Symbols"));
+        lines.push(String::new());
+
+        for item in &results {
+            let kind_str = item.kind.as_deref().unwrap_or("symbol");
+            lines.push(format!("### {} [{}]", item.name, kind_str));
+
+            if let Some(desc) = &item.description {
+                let trimmed = if desc.len() > 150 {
+                    format!("{}...", &desc[..150])
+                } else {
+                    desc.clone()
+                };
+                lines.push(format!("   {}", trimmed));
+            }
+
+            lines.push(format!("   • **Path:** {}", item.qualified_name));
+            lines.push(format!("   • **Docs:** https://api.flutter.dev/flutter/{}", item.href));
+
+            if let Some(enclosed) = &item.enclosed_by {
+                lines.push(format!("   • **In:** {} ({})", enclosed.name, enclosed.kind.as_deref().unwrap_or("unknown")));
+            }
+
+            lines.push(String::new());
+        }
+    }
+
+    let metadata = json!({
+        "platform": "flutter",
+        "query": args.query,
+        "matchCount": results.len(),
+        "maxResults": max_results,
+    });
+
+    log_search_query(&context, None, "flutter", &args.query, results.len()).await;
+
+    Ok(text_response(lines).with_metadata(metadata))
 }

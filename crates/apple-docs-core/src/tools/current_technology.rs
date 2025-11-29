@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use apple_docs_client::DocsPlatform;
 use serde_json::json;
 
 use crate::{
@@ -14,7 +15,7 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "current_technology".to_string(),
-            description: "Report the currently selected technology".to_string(),
+            description: "Report the currently selected platform and technology/library".to_string(),
             input_schema: serde_json::json!({"type": "object", "properties": {}}),
         },
         wrap_handler(|context, _value| async move { handle(context).await }),
@@ -22,18 +23,106 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
 }
 
 async fn handle(context: Arc<AppContext>) -> Result<ToolResponse> {
+    let platform = *context.state.active_platform.read().await;
+
+    // Show platform info at the top
+    let lines = vec![
+        markdown::header(1, "📘 Current Context"),
+        String::new(),
+        markdown::bold("Platform", platform.display_name()),
+        markdown::bold("Languages", &platform.languages().join(", ")),
+        String::new(),
+    ];
+
+    match platform {
+        DocsPlatform::Apple => {
+            return handle_apple(context, lines).await;
+        }
+        DocsPlatform::Android => {
+            return handle_android(context, lines).await;
+        }
+        DocsPlatform::Flutter => {
+            return handle_flutter(context, lines).await;
+        }
+    }
+}
+
+async fn handle_android(context: Arc<AppContext>, mut lines: Vec<String>) -> Result<ToolResponse> {
+    if let Some(lib_name) = context.state.active_android_library.read().await.clone() {
+        if let Ok(Some(lib)) = context.android_client.get_library(&lib_name).await {
+            lines.push(markdown::header(2, "Active Library"));
+            lines.push(String::new());
+            lines.push(markdown::bold("Name", &lib.name));
+            lines.push(markdown::bold("Category", &lib.category.to_string()));
+            lines.push(markdown::bold("Artifact", &format!("{}:{}", lib.group_id, lib.artifact_id)));
+            if let Some(desc) = &lib.description {
+                lines.push(markdown::bold("Description", desc));
+            }
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Next actions"));
+            lines.push("• `search_symbols { \"query\": \"keyword\" }` to find APIs".to_string());
+            lines.push("• `discover_technologies` to browse other libraries".to_string());
+            lines.push("• `switch_platform \"apple\"` or `switch_platform \"flutter\"` to change platform".to_string());
+
+            return Ok(text_response(lines).with_metadata(json!({
+                "platform": "android",
+                "selected": true,
+                "library": lib.name,
+                "category": lib.category.to_string(),
+            })));
+        }
+    }
+
+    lines.push("🚦 No Android library selected".to_string());
+    lines.push(String::new());
+    lines.push("Use `discover_technologies` to browse Android libraries, then `choose_technology` to select one.".to_string());
+
+    Ok(text_response(lines).with_metadata(json!({
+        "platform": "android",
+        "selected": false
+    })))
+}
+
+async fn handle_flutter(context: Arc<AppContext>, mut lines: Vec<String>) -> Result<ToolResponse> {
+    if let Some(lib_name) = context.state.active_flutter_library.read().await.clone() {
+        lines.push(markdown::header(2, "Active Library"));
+        lines.push(String::new());
+        lines.push(markdown::bold("Name", &lib_name));
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Next actions"));
+        lines.push("• `search_symbols { \"query\": \"keyword\" }` to find APIs".to_string());
+        lines.push("• `discover_technologies` to browse other libraries".to_string());
+        lines.push("• `switch_platform \"apple\"` or `switch_platform \"android\"` to change platform".to_string());
+
+        return Ok(text_response(lines).with_metadata(json!({
+            "platform": "flutter",
+            "selected": true,
+            "library": lib_name,
+        })));
+    }
+
+    lines.push("🚦 No Flutter library selected".to_string());
+    lines.push(String::new());
+    lines.push("Use `discover_technologies` to browse Flutter libraries, then `choose_technology` to select one.".to_string());
+
+    Ok(text_response(lines).with_metadata(json!({
+        "platform": "flutter",
+        "selected": false
+    })))
+}
+
+async fn handle_apple(context: Arc<AppContext>, mut lines: Vec<String>) -> Result<ToolResponse> {
     if let Some(active) = context.state.active_technology.read().await.clone() {
-        let mut lines = vec![
-            markdown::header(1, "📘 Current Technology"),
-            String::new(),
-            markdown::bold("Name", &active.title),
-            markdown::bold("Identifier", &active.identifier),
-            String::new(),
-            markdown::header(2, "Next actions"),
-            "• `search_symbols { \"query\": \"keyword\" }` to find symbols".to_string(),
-            "• `get_documentation { \"path\": \"SymbolName\" }` to open docs".to_string(),
-            "• `choose_technology \"Another Framework\"` to switch".to_string(),
-        ];
+        lines.push(markdown::header(2, "Active Technology"));
+        lines.push(String::new());
+        lines.push(markdown::bold("Name", &active.title));
+        lines.push(markdown::bold("Identifier", &active.identifier));
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Next actions"));
+        lines.push("• `search_symbols { \"query\": \"keyword\" }` to find symbols".to_string());
+        lines.push("• `get_documentation { \"path\": \"SymbolName\" }` to open docs".to_string());
+        lines.push("• `choose_technology \"Another Framework\"` to switch".to_string());
+        lines.push("• `switch_platform \"android\"` or `switch_platform \"flutter\"` to change platform".to_string());
 
         let mut primer_count = 0usize;
         let recipes = knowledge::recipes_for(&active.title);
@@ -105,6 +194,7 @@ async fn handle(context: Arc<AppContext>) -> Result<ToolResponse> {
         }
 
         let metadata = json!({
+            "platform": "apple",
             "selected": true,
             "identifier": active.identifier,
             "name": active.title,
@@ -114,11 +204,11 @@ async fn handle(context: Arc<AppContext>) -> Result<ToolResponse> {
 
         Ok(text_response(lines).with_metadata(metadata))
     } else {
-        let lines = [
-            "🚦 Technology Not Selected".to_string(),
-            "Use `discover_technologies` then `choose_technology` to get started.".to_string(),
-        ];
+        lines.push("🚦 Technology Not Selected".to_string());
+        lines.push(String::new());
+        lines.push("Use `discover_technologies` then `choose_technology` to get started.".to_string());
         Ok(text_response(lines).with_metadata(json!({
+            "platform": "apple",
             "selected": false
         })))
     }
