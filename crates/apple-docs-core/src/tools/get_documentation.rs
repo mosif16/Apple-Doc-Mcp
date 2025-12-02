@@ -46,6 +46,19 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                     "path": {"type": "string", "description": "Symbol path or relative name"}
                 }
             }),
+            // Examples showing various path formats accepted by the tool
+            input_examples: Some(vec![
+                // Simple symbol name (resolved relative to active technology)
+                json!({"path": "Button"}),
+                // Nested symbol path
+                json!({"path": "View/body-swift.property"}),
+                // Full documentation path
+                json!({"path": "documentation/swiftui/navigationstack"}),
+                // Design guidance / HIG content
+                json!({"path": "design/human-interface-guidelines/buttons"}),
+                // Path with doc:// prefix (automatically stripped)
+                json!({"path": "doc://com.apple.documentation/documentation/swiftui/text"}),
+            ]),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

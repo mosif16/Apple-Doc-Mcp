@@ -285,6 +285,19 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                     }
                 }
             }),
+            // Examples demonstrating correct usage patterns for complex parameter combinations
+            input_examples: Some(vec![
+                // Minimal: just the required query parameter
+                json!({"query": "Button"}),
+                // Common: search with result limit
+                json!({"query": "NavigationStack", "maxResults": 10}),
+                // Platform-filtered: find iOS-specific symbols
+                json!({"query": "async image", "platform": "iOS", "maxResults": 15}),
+                // Type-filtered: search for specific symbol kinds (struct, class, protocol, enum, func)
+                json!({"query": "animation", "symbolType": "struct", "maxResults": 10}),
+                // Global search: find symbols across all Apple frameworks
+                json!({"query": "URLSession", "scope": "global", "maxResults": 20}),
+            ]),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

@@ -218,6 +218,10 @@ pub struct ToolDefinition {
     pub description: String,
     #[serde(rename = "inputSchema")]
     pub input_schema: serde_json::Value,
+    /// Example inputs demonstrating correct tool usage patterns.
+    /// These help Claude understand parameter combinations and formatting.
+    #[serde(rename = "inputExamples", skip_serializing_if = "Option::is_none")]
+    pub input_examples: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Clone, Serialize)]

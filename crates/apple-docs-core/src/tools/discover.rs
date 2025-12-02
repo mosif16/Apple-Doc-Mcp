@@ -172,6 +172,19 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                     "pageSize": {"type": "number"}
                 }
             }),
+            // Examples demonstrating various filtering and browsing patterns
+            input_examples: Some(vec![
+                // Browse all technologies (no filters)
+                json!({}),
+                // Search by name
+                json!({"query": "SwiftUI"}),
+                // Filter by provider
+                json!({"provider": "telegram"}),
+                // Filter by category (Apple frameworks)
+                json!({"category": "ui", "sortBy": "relevance"}),
+                // Combined filters with pagination
+                json!({"query": "data", "provider": "apple", "page": 2, "pageSize": 10}),
+            ]),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

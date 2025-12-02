@@ -33,6 +33,19 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                     }
                 }
             }),
+            // Examples showing how to phrase task descriptions for best recipe matching
+            input_examples: Some(vec![
+                // UI implementation task
+                json!({"task": "add search suggestions"}),
+                // Navigation pattern
+                json!({"task": "implement tab-based navigation"}),
+                // Data handling task
+                json!({"task": "fetch data from an API"}),
+                // State management
+                json!({"task": "share state between views"}),
+                // Animation task
+                json!({"task": "animate view transitions"}),
+            ]),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

@@ -16,6 +16,8 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
             name: "current_technology".to_string(),
             description: "Report the currently selected technology".to_string(),
             input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            // No parameters needed - this tool just reports current state
+            input_examples: None,
         },
         wrap_handler(|context, _value| async move { handle(context).await }),
     )

@@ -38,6 +38,19 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                     }
                 }
             }),
+            // Examples showing how to select technologies from different providers
+            input_examples: Some(vec![
+                // Apple: by name (simplest)
+                json!({"name": "SwiftUI"}),
+                // Apple: by full identifier
+                json!({"identifier": "doc://com.apple.documentation/documentation/swiftui"}),
+                // Telegram: by identifier
+                json!({"identifier": "telegram:methods"}),
+                // TON: by identifier
+                json!({"identifier": "ton:accounts"}),
+                // Cocoon: by identifier
+                json!({"identifier": "cocoon:architecture"}),
+            ]),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;
