@@ -23,14 +23,14 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "choose_technology".to_string(),
-            description: "Select the framework/technology to scope all subsequent searches. Supports Apple (SwiftUI, UIKit), Telegram (methods, types), TON (accounts, nft), and Cocoon (architecture, smart-contracts)."
+            description: "Select the framework/technology to scope all subsequent searches. Supports Apple (SwiftUI, UIKit), Telegram (methods, types), TON (accounts, nft), Cocoon (architecture, smart-contracts), and Rust (std, serde, tokio)."
                 .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "identifier": {
                         "type": "string",
-                        "description": "Technology identifier. Examples: 'doc://com.apple.documentation/documentation/swiftui' (Apple), 'telegram:methods' (Telegram), 'ton:accounts' (TON), 'cocoon:architecture' (Cocoon)"
+                        "description": "Technology identifier. Examples: 'doc://com.apple.documentation/documentation/swiftui' (Apple), 'telegram:methods' (Telegram), 'ton:accounts' (TON), 'cocoon:architecture' (Cocoon), 'rust:std' (Rust)"
                     },
                     "name": {
                         "type": "string",
@@ -50,6 +50,10 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"identifier": "ton:accounts"}),
                 // Cocoon: by identifier
                 json!({"identifier": "cocoon:architecture"}),
+                // Rust: by identifier
+                json!({"identifier": "rust:std"}),
+                // Rust: by name (crate search)
+                json!({"name": "serde"}),
             ]),
             // State-setting tool - typically called once before batch operations.
             // Programmatic calling has limited benefit.
@@ -78,6 +82,10 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
 
     if identifier.starts_with("cocoon:") || name.to_lowercase().contains("cocoon") {
         return handle_cocoon(&context, &args).await;
+    }
+
+    if identifier.starts_with("rust:") || name.to_lowercase() == "rust" {
+        return handle_rust(&context, &args).await;
     }
 
     // Default to Apple
@@ -389,6 +397,111 @@ async fn handle_cocoon(context: &Arc<AppContext>, args: &Args) -> Result<ToolRes
     Ok(text_response(lines).with_metadata(metadata))
 }
 
+/// Handle Rust technology selection
+async fn handle_rust(context: &Arc<AppContext>, args: &Args) -> Result<ToolResponse> {
+    let technologies = context
+        .providers
+        .rust
+        .get_technologies()
+        .await
+        .context("Failed to load Rust technologies")?;
+
+    let identifier = args.identifier.as_deref().unwrap_or("");
+    let name = args.name.as_deref().unwrap_or("");
+
+    // First try to find in existing technologies (std library crates)
+    let chosen = technologies.iter().find(|t| {
+        t.identifier.to_lowercase() == identifier.to_lowercase()
+            || t.crate_info.name.to_lowercase() == name.to_lowercase()
+    });
+
+    // If not found in std crates and name is provided, try to fetch from docs.rs
+    let technology = match chosen {
+        Some(tech) => tech.clone(),
+        None if !name.is_empty() => {
+            // Try to load crate from docs.rs
+            match context.providers.rust.get_crate(name).await {
+                Ok(crate_info) => {
+                    multi_provider_client::rust::RustTechnology::from_crate(crate_info, 0)
+                }
+                Err(_) => {
+                    let mut lines = vec![
+                        markdown::header(1, "❌ Rust Crate Not Found"),
+                        format!("Could not find \"{}\".", name),
+                        String::new(),
+                        markdown::header(2, "Available Rust Crates"),
+                    ];
+                    for tech in &technologies {
+                        lines.push(format!("• {} — `choose_technology {{ \"identifier\": \"{}\" }}`", tech.title, tech.identifier));
+                    }
+                    lines.push(String::new());
+                    lines.push("*Tip: You can search for any crate on docs.rs by name*".to_string());
+                    let metadata = json!({
+                        "resolved": false,
+                        "provider": "rust",
+                        "suggestions": technologies.len(),
+                    });
+                    return Ok(text_response(lines).with_metadata(metadata));
+                }
+            }
+        }
+        None => {
+            let mut lines = vec![
+                markdown::header(1, "❌ Rust Technology Not Found"),
+                format!("Could not find \"{}\".", args.name.as_deref().or(args.identifier.as_deref()).unwrap_or("unknown")),
+                String::new(),
+                markdown::header(2, "Available Rust Crates"),
+            ];
+            for tech in &technologies {
+                lines.push(format!("• {} — `choose_technology {{ \"identifier\": \"{}\" }}`", tech.title, tech.identifier));
+            }
+            let metadata = json!({
+                "resolved": false,
+                "provider": "rust",
+                "suggestions": technologies.len(),
+            });
+            return Ok(text_response(lines).with_metadata(metadata));
+        }
+    };
+
+    // Set unified technology state
+    context.state.active_technology.write().await.take();
+    *context.state.active_provider.write().await = ProviderType::Rust;
+    *context.state.active_unified_technology.write().await = Some(UnifiedTechnology::from_rust(technology.clone()));
+
+    let is_std = technology.crate_info.is_std;
+    let lines = vec![
+        markdown::header(1, "✅ Rust Technology Selected"),
+        String::new(),
+        markdown::bold("Provider", "🦀 Rust"),
+        markdown::bold("Crate", &technology.crate_info.name),
+        markdown::bold("Version", &technology.crate_info.version),
+        markdown::bold("Identifier", &technology.identifier),
+        if is_std {
+            markdown::bold("Type", "Standard Library")
+        } else {
+            markdown::bold("Type", "docs.rs Crate")
+        },
+        String::new(),
+        markdown::header(2, "Next actions"),
+        "• `search_symbols { \"query\": \"HashMap\" }` — search within this crate".to_string(),
+        "• `get_documentation { \"path\": \"std::collections::HashMap\" }` — get symbol details".to_string(),
+        "• `discover_technologies { \"provider\": \"rust\" }` — browse crates".to_string(),
+    ];
+
+    let metadata = json!({
+        "resolved": true,
+        "provider": "rust",
+        "identifier": technology.identifier,
+        "name": technology.crate_info.name,
+        "version": technology.crate_info.version,
+        "isStd": is_std,
+        "itemCount": technology.item_count,
+    });
+
+    Ok(text_response(lines).with_metadata(metadata))
+}
+
 fn resolve_apple_candidate(candidates: &[Technology], args: &Args) -> Option<Technology> {
     if let Some(identifier) = &args.identifier {
         let lower = identifier.to_lowercase();
@@ -479,7 +592,7 @@ fn build_apple_not_found(candidates: &[Technology], args: &Args) -> NotFoundDeta
 
     if suggestions_list.is_empty() {
         lines.push("• Use `discover_technologies { \"provider\": \"apple\" }` to find candidates".to_string());
-        lines.push("• Or try other providers: telegram, ton, cocoon".to_string());
+        lines.push("• Or try other providers: telegram, ton, cocoon, rust".to_string());
     } else {
         lines.extend(suggestions_list);
     }

@@ -148,7 +148,7 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "discover_technologies".to_string(),
-            description: "Explore and filter available technologies/frameworks from Apple, Telegram, TON, and Cocoon. \
+            description: "Explore and filter available technologies/frameworks from Apple, Telegram, TON, Cocoon, and Rust. \
                          Supports programmatic iteration: retrieve technology list in code, then loop through \
                          to search or fetch documentation for each. Useful for cross-framework analysis."
                 .to_string(),
@@ -161,8 +161,8 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                     },
                     "provider": {
                         "type": "string",
-                        "enum": ["apple", "telegram", "ton", "cocoon", "all"],
-                        "description": "Filter by documentation provider (default: all). Use 'apple' for iOS/macOS frameworks, 'telegram' for Bot API, 'ton' for blockchain API, 'cocoon' for confidential computing"
+                        "enum": ["apple", "telegram", "ton", "cocoon", "rust", "all"],
+                        "description": "Filter by documentation provider (default: all). Use 'apple' for iOS/macOS frameworks, 'telegram' for Bot API, 'ton' for blockchain API, 'cocoon' for confidential computing, 'rust' for Rust std library and crates"
                     },
                     "category": {
                         "type": "string",
@@ -190,6 +190,8 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"category": "ui", "sortBy": "relevance"}),
                 // Combined filters with pagination
                 json!({"query": "data", "provider": "apple", "page": 2, "pageSize": 10}),
+                // Browse Rust crates
+                json!({"provider": "rust"}),
             ]),
             // Enable programmatic calling for technology enumeration.
             // Allows Claude to iterate through frameworks and perform operations on each.
@@ -269,6 +271,13 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         }
     }
 
+    // Rust technologies
+    if provider_filter == "all" || provider_filter == "rust" {
+        if let Ok(rust_techs) = context.providers.rust.get_technologies().await {
+            unified_techs.extend(rust_techs.into_iter().map(UnifiedTechnology::from_rust));
+        }
+    }
+
     // Apply query filter
     if let Some(query) = &args.query {
         let query_lower = query.to_lowercase();
@@ -338,7 +347,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
 
     // Show available providers hint when no filter applied
     if args.query.is_none() && provider_filter == "all" {
-        lines.push("*Available providers: apple (iOS/macOS), telegram (Bot API), ton (Blockchain), cocoon (Confidential Computing)*".to_string());
+        lines.push("*Available providers: apple (iOS/macOS), telegram (Bot API), ton (Blockchain), cocoon (Confidential Computing), rust (Rust std & crates)*".to_string());
         lines.push("*Filter: `discover_technologies { \"provider\": \"telegram\" }`*".to_string());
         lines.push(String::new());
     }
@@ -369,6 +378,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             TechnologyKind::ApiCategory => " [API]",
             TechnologyKind::BlockchainApi => " [Blockchain]",
             TechnologyKind::DocSection => " [Docs]",
+            TechnologyKind::RustCrate => " [Crate]",
         };
         title_line.push_str(kind_badge);
 
@@ -396,6 +406,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let telegram_count = unified_techs.iter().filter(|t| t.provider == ProviderType::Telegram).count();
     let ton_count = unified_techs.iter().filter(|t| t.provider == ProviderType::TON).count();
     let cocoon_count = unified_techs.iter().filter(|t| t.provider == ProviderType::Cocoon).count();
+    let rust_count = unified_techs.iter().filter(|t| t.provider == ProviderType::Rust).count();
 
     let metadata = json!({
         "totalMatches": unified_techs.len(),
@@ -411,6 +422,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             "telegram": telegram_count,
             "ton": ton_count,
             "cocoon": cocoon_count,
+            "rust": rust_count,
         }
     });
 
@@ -424,6 +436,7 @@ fn provider_display_name(provider: &ProviderType) -> &'static str {
         ProviderType::Telegram => "📱 Telegram",
         ProviderType::TON => "💎 TON Blockchain",
         ProviderType::Cocoon => "🥥 Cocoon",
+        ProviderType::Rust => "🦀 Rust",
     }
 }
 
@@ -434,6 +447,7 @@ fn provider_sort_order(provider: &ProviderType) -> u8 {
         ProviderType::Telegram => 1,
         ProviderType::TON => 2,
         ProviderType::Cocoon => 3,
+        ProviderType::Rust => 4,
     }
 }
 
@@ -455,6 +469,7 @@ fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>)
             TechnologyKind::BlockchainApi => 35,
             TechnologyKind::DocSection => 30,
             TechnologyKind::Framework => 50,
+            TechnologyKind::RustCrate => 45,
         }
     };
 

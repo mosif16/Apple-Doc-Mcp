@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use multi_provider_client::types::ProviderType;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -57,20 +58,39 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
 }
 
 async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
-    let active = context
-        .state
-        .active_technology
-        .read()
-        .await
-        .clone()
-        .context("No technology selected. Use `choose_technology` before requesting a recipe.")?;
+    // Get active provider
+    let provider = *context.state.active_provider.read().await;
+
+    // Get the active technology title based on provider
+    let active_title = match provider {
+        ProviderType::Apple => {
+            context
+                .state
+                .active_technology
+                .read()
+                .await
+                .clone()
+                .map(|t| t.title)
+                .context("No technology selected. Use `choose_technology` before requesting a recipe.")?
+        }
+        ProviderType::Telegram | ProviderType::TON | ProviderType::Cocoon | ProviderType::Rust => {
+            context
+                .state
+                .active_unified_technology
+                .read()
+                .await
+                .clone()
+                .map(|t| t.title)
+                .context("No technology selected. Use `choose_technology` before requesting a recipe.")?
+        }
+    };
     let task_trimmed = args.task.trim().to_string();
 
-    if let Some(recipe) = knowledge::find_recipe(&active.title, &args.task) {
+    if let Some(recipe) = knowledge::find_recipe(&active_title, &args.task) {
         let mut lines = vec![
             markdown::header(1, &format!("🧩 Recipe: {}", recipe.title)),
             String::new(),
-            markdown::bold("Technology", &active.title),
+            markdown::bold("Technology", &active_title),
             markdown::bold("Summary", recipe.summary),
             String::new(),
             markdown::header(2, "Steps"),
@@ -110,7 +130,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             format!(
                 "I couldn't find a curated recipe for \"{}\" in {}.",
                 task_trimmed,
-                active.title
+                active_title
             ),
             "Try adjusting the description (for example, \"add search suggestions\"), or search directly with `search_symbols`."
                 .to_string(),
@@ -120,7 +140,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             "task": task_trimmed,
         });
 
-        let fallback = build_fallback_recipe(context.clone(), &active.title, &task_trimmed).await;
+        let fallback = build_fallback_recipe(context.clone(), &active_title, &task_trimmed).await;
         if let Some(fallback) = fallback {
             if let Some(obj) = metadata.as_object_mut() {
                 obj.insert("fallback".to_string(), fallback.metadata.clone());

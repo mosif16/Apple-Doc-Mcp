@@ -1183,7 +1183,309 @@ static RECIPES: Lazy<Vec<RecipeDefinition>> = Lazy::new(|| {
         },
     ];
 
+    // Rust standard library references
+    const RUST_HASHMAP_REFS: [Related; 3] = [
+        Related {
+            title: "HashMap",
+            path: "std::collections::HashMap",
+            note: "A hash map with protection against HashDoS attacks.",
+        },
+        Related {
+            title: "Entry API",
+            path: "std::collections::hash_map::Entry",
+            note: "Entry API for in-place updates and insertions.",
+        },
+        Related {
+            title: "BTreeMap",
+            path: "std::collections::BTreeMap",
+            note: "Sorted alternative when order matters.",
+        },
+    ];
+
+    const RUST_ERROR_HANDLING_REFS: [Related; 3] = [
+        Related {
+            title: "Result",
+            path: "std::result::Result",
+            note: "Type for recoverable errors.",
+        },
+        Related {
+            title: "Option",
+            path: "std::option::Option",
+            note: "Type for optional values.",
+        },
+        Related {
+            title: "? operator",
+            path: "std::ops::Try",
+            note: "Propagate errors with the ? operator.",
+        },
+    ];
+
+    const RUST_ITERATOR_REFS: [Related; 3] = [
+        Related {
+            title: "Iterator",
+            path: "std::iter::Iterator",
+            note: "Trait for iteration over sequences.",
+        },
+        Related {
+            title: "IntoIterator",
+            path: "std::iter::IntoIterator",
+            note: "Trait for types that can be iterated.",
+        },
+        Related {
+            title: "Itertools (crate)",
+            path: "itertools",
+            note: "Extended iterator adaptors from crates.io.",
+        },
+    ];
+
+    const RUST_ASYNC_REFS: [Related; 3] = [
+        Related {
+            title: "Future",
+            path: "std::future::Future",
+            note: "Trait for asynchronous computation.",
+        },
+        Related {
+            title: "async/await",
+            path: "std::keyword::async",
+            note: "Keywords for async programming.",
+        },
+        Related {
+            title: "tokio (crate)",
+            path: "tokio",
+            note: "Popular async runtime for Rust.",
+        },
+    ];
+
+    const RUST_STRING_REFS: [Related; 3] = [
+        Related {
+            title: "String",
+            path: "std::string::String",
+            note: "Owned, mutable UTF-8 string.",
+        },
+        Related {
+            title: "&str",
+            path: "std::primitive::str",
+            note: "Borrowed string slice.",
+        },
+        Related {
+            title: "format!",
+            path: "std::macro::format",
+            note: "Macro for string formatting.",
+        },
+    ];
+
+    const RUST_TRAITS_REFS: [Related; 3] = [
+        Related {
+            title: "Clone",
+            path: "std::clone::Clone",
+            note: "Trait for duplicating values.",
+        },
+        Related {
+            title: "Debug",
+            path: "std::fmt::Debug",
+            note: "Trait for debug formatting.",
+        },
+        Related {
+            title: "Default",
+            path: "std::default::Default",
+            note: "Trait for default values.",
+        },
+    ];
+
+    const RUST_SERDE_REFS: [Related; 3] = [
+        Related {
+            title: "Serialize",
+            path: "serde::Serialize",
+            note: "Trait for serialization.",
+        },
+        Related {
+            title: "Deserialize",
+            path: "serde::Deserialize",
+            note: "Trait for deserialization.",
+        },
+        Related {
+            title: "serde_json",
+            path: "serde_json",
+            note: "JSON serialization with serde.",
+        },
+    ];
+
     vec![
+        // Rust standard library recipes
+        Recipe {
+            id: "rust-hashmap-usage",
+            technology: "Rust std Library",
+            title: "Use HashMap for key-value storage",
+            summary: "Store and retrieve values by key using HashMap with the Entry API.",
+            keywords: &[
+                "how do i use hashmap",
+                "hashmap",
+                "hash map",
+                "key value",
+                "dictionary",
+                "map",
+            ],
+            steps: &[
+                "Import HashMap from std::collections.",
+                "Create a new HashMap with HashMap::new() or HashMap::with_capacity(n).",
+                "Insert values with insert(key, value) or use entry().or_insert().",
+                "Retrieve values with get(&key) which returns Option<&V>.",
+                "Use the Entry API for efficient conditional insertions and updates.",
+                "Iterate with for (key, value) in &map or use iterators like keys(), values().",
+            ],
+            references: &RUST_HASHMAP_REFS,
+        },
+        Recipe {
+            id: "rust-error-handling",
+            technology: "Rust std Library",
+            title: "Handle errors with Result and Option",
+            summary: "Use Rust's type system for error handling without exceptions.",
+            keywords: &[
+                "how do i handle errors",
+                "handle errors",
+                "error handling",
+                "errors",
+                "result",
+                "option",
+                "unwrap",
+                "expect",
+            ],
+            steps: &[
+                "Return Result<T, E> from functions that can fail.",
+                "Use the ? operator to propagate errors to the caller.",
+                "Match on Result with match or use combinators like map_err(), and_then().",
+                "Use Option<T> for values that might be absent.",
+                "Avoid unwrap() in production - use expect() with messages or proper handling.",
+                "Define custom error types for complex error handling scenarios.",
+            ],
+            references: &RUST_ERROR_HANDLING_REFS,
+        },
+        Recipe {
+            id: "rust-iterators",
+            technology: "Rust std Library",
+            title: "Process collections with iterators",
+            summary: "Use Rust's powerful iterator system for functional-style data processing.",
+            keywords: &[
+                "how do i use iterators",
+                "use iterators",
+                "iterator",
+                "iterators",
+                "map",
+                "filter",
+                "collect",
+                "fold",
+            ],
+            steps: &[
+                "Get an iterator from a collection with .iter(), .iter_mut(), or .into_iter().",
+                "Chain adaptor methods like map(), filter(), take(), skip().",
+                "Use filter_map() to filter and transform in one step.",
+                "Collect results into a collection with .collect::<Vec<_>>().",
+                "Use fold() or reduce() for aggregation operations.",
+                "Iterators are lazy - nothing happens until consumed.",
+            ],
+            references: &RUST_ITERATOR_REFS,
+        },
+        Recipe {
+            id: "rust-async-await",
+            technology: "Rust std Library",
+            title: "Write async code with async/await",
+            summary: "Use async functions and the await keyword for non-blocking I/O.",
+            keywords: &[
+                "how do i use async",
+                "use async",
+                "async await",
+                "async",
+                "future",
+                "async function",
+                "concurrent",
+                "await",
+            ],
+            steps: &[
+                "Mark functions as async fn to make them return a Future.",
+                "Use .await on Futures to suspend until they complete.",
+                "Choose a runtime like tokio or async-std to execute async code.",
+                "Use tokio::spawn() or similar to run tasks concurrently.",
+                "Use join! or select! macros for concurrent operations.",
+                "Async code compiles to state machines - zero-cost abstraction.",
+            ],
+            references: &RUST_ASYNC_REFS,
+        },
+        Recipe {
+            id: "rust-strings",
+            technology: "Rust std Library",
+            title: "Work with strings in Rust",
+            summary: "Understand String vs &str and common string operations.",
+            keywords: &[
+                "how do i use strings",
+                "use strings",
+                "string",
+                "strings",
+                "str",
+                "string slice",
+                "format",
+                "concatenate",
+                "text",
+            ],
+            steps: &[
+                "Use String for owned, mutable strings; &str for borrowed slices.",
+                "Create String with String::from(\"...\") or \"...\".to_string().",
+                "Use format!() macro for complex string formatting.",
+                "Concatenate with + operator (takes ownership) or format!().",
+                "Use .as_str() to get &str from String.",
+                "Remember: Rust strings are UTF-8, indexing by byte is not allowed.",
+            ],
+            references: &RUST_STRING_REFS,
+        },
+        Recipe {
+            id: "rust-derive-traits",
+            technology: "Rust std Library",
+            title: "Derive common traits for structs",
+            summary: "Use #[derive(...)] to automatically implement common traits.",
+            keywords: &[
+                "how do i derive traits",
+                "derive traits",
+                "derive",
+                "clone",
+                "debug",
+                "default",
+                "traits",
+                "#[derive",
+            ],
+            steps: &[
+                "Add #[derive(Debug)] to enable {:?} formatting for debugging.",
+                "Add #[derive(Clone)] to enable .clone() for duplicating values.",
+                "Add #[derive(Default)] to enable Type::default() for default values.",
+                "Combine multiple derives: #[derive(Debug, Clone, PartialEq)].",
+                "For Hash/Eq: derive both PartialEq and Eq, plus Hash.",
+                "Use derive_more crate for additional automatic implementations.",
+            ],
+            references: &RUST_TRAITS_REFS,
+        },
+        Recipe {
+            id: "rust-serde-json",
+            technology: "Rust std Library",
+            title: "Serialize and deserialize JSON with serde",
+            summary: "Use serde and serde_json for JSON serialization.",
+            keywords: &[
+                "how do i parse json",
+                "parse json",
+                "json",
+                "serde",
+                "serialize",
+                "deserialize",
+                "serialization",
+                "deserialization",
+            ],
+            steps: &[
+                "Add serde and serde_json to Cargo.toml dependencies.",
+                "Derive Serialize and Deserialize on your structs.",
+                "Use serde_json::to_string(&value) to serialize to JSON string.",
+                "Use serde_json::from_str(&json_str) to deserialize from JSON.",
+                "Use #[serde(rename = \"...\")] to map different field names.",
+                "Use #[serde(skip_serializing_if = \"...\")] to conditionally skip fields.",
+            ],
+            references: &RUST_SERDE_REFS,
+        },
         Recipe {
             id: "swiftui-search-list",
             technology: "swiftui",

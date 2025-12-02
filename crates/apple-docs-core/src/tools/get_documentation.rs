@@ -5,6 +5,7 @@ use apple_docs_client::types::{
     extract_text, format_platforms, PlatformInfo, ReferenceData, SymbolData, TopicData,
     TopicSection,
 };
+use multi_provider_client::types::ProviderType;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -78,14 +79,56 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
 }
 
 async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
-    let active = context
-        .state
-        .active_technology
-        .read()
-        .await
-        .clone()
-        .context("No technology selected. Use `choose_technology` first.")?;
+    // Dispatch based on provider type
+    let provider = *context.state.active_provider.read().await;
 
+    match provider {
+        ProviderType::Apple => {
+            let active = context
+                .state
+                .active_technology
+                .read()
+                .await
+                .clone()
+                .context("No technology selected. Use `choose_technology` first.")?;
+            handle_apple(&context, &active, &args).await
+        }
+        ProviderType::Telegram | ProviderType::TON | ProviderType::Cocoon | ProviderType::Rust => {
+            // For non-Apple providers, use active_unified_technology
+            let unified = context
+                .state
+                .active_unified_technology
+                .read()
+                .await
+                .clone()
+                .context("No technology selected. Use `choose_technology` first.")?;
+
+            // Create a minimal Technology struct for compatibility
+            let active = apple_docs_client::types::Technology {
+                identifier: unified.identifier.clone(),
+                title: unified.title.clone(),
+                r#abstract: vec![],
+                kind: String::new(),
+                role: String::new(),
+                url: String::new(),
+            };
+
+            match provider {
+                ProviderType::Telegram => handle_telegram(&context, &active, &args).await,
+                ProviderType::TON => handle_ton(&context, &active, &args).await,
+                ProviderType::Cocoon => handle_cocoon(&context, &active, &args).await,
+                ProviderType::Rust => handle_rust(&context, &active, &args).await,
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+async fn handle_apple(
+    context: &Arc<AppContext>,
+    active: &apple_docs_client::types::Technology,
+    args: &Args,
+) -> Result<ToolResponse> {
     let identifier = active
         .identifier
         .split('/')
@@ -113,7 +156,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
                         .unwrap_or_else(|| "Symbol".to_string());
                     let symbol_path = format!("/{}", normalized);
                     let design_sections =
-                        design_guidance::guidance_for(&context, &symbol_title, &symbol_path)
+                        design_guidance::guidance_for(context, &symbol_title, &symbol_path)
                             .await
                             .unwrap_or_default();
                     let render = build_symbol_response(&active.title, &symbol, &design_sections);
@@ -130,7 +173,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
                             format!("/{path}")
                         };
                         let design_sections =
-                            design_guidance::guidance_for(&context, &topic_title, &topic_path)
+                            design_guidance::guidance_for(context, &topic_title, &topic_path)
                                 .await
                                 .unwrap_or_default();
                         let render =
@@ -159,6 +202,485 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             fallback
         )
     }))
+}
+
+async fn handle_telegram(
+    context: &Arc<AppContext>,
+    active: &apple_docs_client::types::Technology,
+    args: &Args,
+) -> Result<ToolResponse> {
+    let path = args.path.trim();
+
+    // Try to get item by name (searching through all items)
+    if let Ok(item) = context.providers.telegram.get_item(path).await {
+        let mut lines = vec![
+            markdown::header(1, &item.name),
+            String::new(),
+            markdown::bold("Provider", "Telegram Bot API"),
+            markdown::bold("Type", &item.kind),
+        ];
+
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Description"));
+        lines.push(item.description.clone());
+
+        if !item.fields.is_empty() {
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Fields/Parameters"));
+            for field in &item.fields {
+                let required_str = if field.required { " (required)" } else { " (optional)" };
+                let types_str = field.types.join(" | ");
+                lines.push(format!(
+                    "• **{}** `{}`{} — {}",
+                    field.name, types_str, required_str, field.description
+                ));
+            }
+        }
+
+        if let Some(returns) = &item.returns {
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Returns"));
+            lines.push(returns.join(", "));
+        }
+
+        let metadata = json!({
+            "provider": "telegram",
+            "kind": item.kind,
+            "name": item.name,
+            "fieldCount": item.fields.len(),
+        });
+
+        return Ok(text_response(lines).with_metadata(metadata));
+    }
+
+    // Fallback: search for the item
+    if let Ok(results) = context.providers.telegram.search(path).await {
+        if let Some(item) = results.first() {
+            let mut lines = vec![
+                markdown::header(1, &item.name),
+                String::new(),
+                markdown::bold("Provider", "Telegram Bot API"),
+                markdown::bold("Type", &item.kind),
+            ];
+
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Description"));
+            lines.push(item.description.clone());
+
+            let metadata = json!({
+                "provider": "telegram",
+                "kind": item.kind,
+                "name": item.name,
+            });
+
+            return Ok(text_response(lines).with_metadata(metadata));
+        }
+    }
+
+    Err(anyhow!("Documentation not found for '{}' in Telegram Bot API. Technology: {}", path, active.title))
+}
+
+async fn handle_ton(
+    context: &Arc<AppContext>,
+    active: &apple_docs_client::types::Technology,
+    args: &Args,
+) -> Result<ToolResponse> {
+    let path = args.path.trim();
+
+    // Try to get endpoint by operation ID
+    if let Ok(endpoint) = context.providers.ton.get_endpoint(path).await {
+        let mut lines = vec![
+            markdown::header(1, &endpoint.path),
+            String::new(),
+            markdown::bold("Provider", "TON API"),
+            markdown::bold("Method", &endpoint.method),
+            markdown::bold("Operation ID", &endpoint.operation_id),
+        ];
+
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Description"));
+        if let Some(summary) = &endpoint.summary {
+            lines.push(summary.clone());
+        } else if let Some(desc) = &endpoint.description {
+            lines.push(desc.clone());
+        } else {
+            lines.push("No description available.".to_string());
+        }
+
+        if !endpoint.parameters.is_empty() {
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Parameters"));
+            for param in &endpoint.parameters {
+                let required = if param.required { " (required)" } else { " (optional)" };
+                let location = format!(" [{}]", param.location);
+                let schema_type = param.schema_type.as_deref().unwrap_or("any");
+                let description = param.description.as_deref().unwrap_or("");
+                lines.push(format!(
+                    "• **{}** `{}`{}{} — {}",
+                    param.name, schema_type, location, required, description
+                ));
+            }
+        }
+
+        if !endpoint.responses.is_empty() {
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Responses"));
+            for (code, desc) in &endpoint.responses {
+                lines.push(format!("• **{}** — {}", code, desc));
+            }
+        }
+
+        let metadata = json!({
+            "provider": "ton",
+            "kind": "endpoint",
+            "method": endpoint.method,
+            "path": endpoint.path,
+            "parameterCount": endpoint.parameters.len(),
+        });
+
+        return Ok(text_response(lines).with_metadata(metadata));
+    }
+
+    // Fallback: search for the endpoint
+    if let Ok(results) = context.providers.ton.search(path).await {
+        if let Some(endpoint) = results.first() {
+            let mut lines = vec![
+                markdown::header(1, &endpoint.path),
+                String::new(),
+                markdown::bold("Provider", "TON API"),
+                markdown::bold("Method", &endpoint.method),
+            ];
+
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Description"));
+            if let Some(summary) = &endpoint.summary {
+                lines.push(summary.clone());
+            } else {
+                lines.push("No description available.".to_string());
+            }
+
+            let metadata = json!({
+                "provider": "ton",
+                "kind": "endpoint",
+                "method": endpoint.method,
+                "path": endpoint.path,
+            });
+
+            return Ok(text_response(lines).with_metadata(metadata));
+        }
+    }
+
+    Err(anyhow!("Documentation not found for '{}' in TON API. Technology: {}", path, active.title))
+}
+
+async fn handle_cocoon(
+    context: &Arc<AppContext>,
+    active: &apple_docs_client::types::Technology,
+    args: &Args,
+) -> Result<ToolResponse> {
+    let path = args.path.trim();
+    let section_id = active.identifier.as_str();
+
+    if let Ok(section) = context.providers.cocoon.get_section(section_id).await {
+        // First check if the path matches the section itself
+        if section.identifier.eq_ignore_ascii_case(path) || section.title.to_lowercase().contains(&path.to_lowercase()) {
+            let mut lines = vec![
+                markdown::header(1, &section.title),
+                String::new(),
+                markdown::bold("Provider", "Cocoon"),
+                markdown::bold("Type", "Documentation Section"),
+            ];
+
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Overview"));
+            lines.push(section.description.clone());
+
+            if !section.documents.is_empty() {
+                lines.push(String::new());
+                lines.push(markdown::header(2, "Documents"));
+                for doc in &section.documents {
+                    lines.push(format!("• **{}** — {}", doc.title, trim_with_ellipsis(&doc.summary, 100)));
+                    lines.push(format!("  `get_documentation {{ \"path\": \"{}\" }}`", doc.path));
+                }
+            }
+
+            let metadata = json!({
+                "provider": "cocoon",
+                "kind": "section",
+                "title": section.title,
+                "documentCount": section.documents.len(),
+            });
+
+            return Ok(text_response(lines).with_metadata(metadata));
+        }
+
+        // Look for a specific document within the section
+        if let Some(doc) = section.documents.iter().find(|d| {
+            d.path.eq_ignore_ascii_case(path)
+                || d.title.to_lowercase().contains(&path.to_lowercase())
+        }) {
+            // Fetch full document content
+            if let Ok(full_doc) = context.providers.cocoon.get_document(&doc.path).await {
+                let mut lines = vec![
+                    markdown::header(1, &full_doc.title),
+                    String::new(),
+                    markdown::bold("Provider", "Cocoon"),
+                    markdown::bold("Section", &section.title),
+                ];
+
+                lines.push(String::new());
+                lines.push(markdown::header(2, "Content"));
+                lines.push(full_doc.content.clone());
+
+                if !full_doc.url.is_empty() {
+                    lines.push(String::new());
+                    lines.push(format!("**Source:** {}", full_doc.url));
+                }
+
+                let metadata = json!({
+                    "provider": "cocoon",
+                    "kind": "document",
+                    "title": full_doc.title,
+                    "path": full_doc.path,
+                });
+
+                return Ok(text_response(lines).with_metadata(metadata));
+            }
+        }
+    }
+
+    Err(anyhow!("Documentation not found for '{}' in Cocoon. Technology: {}", path, active.title))
+}
+
+async fn handle_rust(
+    context: &Arc<AppContext>,
+    active: &apple_docs_client::types::Technology,
+    args: &Args,
+) -> Result<ToolResponse> {
+    let path = args.path.trim();
+
+    // Extract crate name from technology identifier (e.g., "rust:std" -> "std")
+    let crate_name = active
+        .identifier
+        .strip_prefix("rust:")
+        .unwrap_or(&active.identifier);
+
+    // Try to get the item documentation
+    if let Ok(item) = context.providers.rust.get_item(path).await {
+        return Ok(build_rust_response(&item));
+    }
+
+    // If not found as item, try searching
+    if let Ok(results) = context.providers.rust.search(crate_name, path).await {
+        if let Some(item) = results.first() {
+            // For search results, try to get detailed docs
+            if let Ok(detailed) = context.providers.rust.get_item(&item.path).await {
+                return Ok(build_rust_response(&detailed));
+            }
+            return Ok(build_rust_response(item));
+        }
+    }
+
+    Err(anyhow!(
+        "Documentation not found for '{}' in Rust crate '{}'",
+        path,
+        crate_name
+    ))
+}
+
+fn build_rust_response(item: &multi_provider_client::rust::RustItem) -> ToolResponse {
+    let mut lines = vec![
+        markdown::header(1, &item.name),
+        String::new(),
+        markdown::bold("Provider", "Rust"),
+        markdown::bold("Crate", &format!("{} v{}", item.crate_name, item.crate_version)),
+        markdown::bold("Kind", &format!("{:?}", item.kind)),
+    ];
+
+    if !item.path.is_empty() {
+        lines.push(markdown::bold("Path", &format!("`{}`", item.path)));
+    }
+
+    // Declaration/Signature
+    if let Some(decl) = &item.declaration {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Declaration"));
+        lines.push(format!("```rust\n{}\n```", decl));
+    }
+
+    // Quick Summary
+    lines.push(String::new());
+    lines.push(markdown::header(2, "Quick Summary"));
+    let quick_summary = build_rust_quick_summary(item);
+    lines.extend(quick_summary);
+
+    // Documentation
+    lines.push(String::new());
+    lines.push(markdown::header(2, "Documentation"));
+    if let Some(docs) = &item.documentation {
+        if !docs.is_empty() {
+            lines.push(docs.clone());
+        } else if !item.summary.is_empty() {
+            lines.push(item.summary.clone());
+        } else {
+            lines.push("No documentation available.".to_string());
+        }
+    } else if !item.summary.is_empty() {
+        lines.push(item.summary.clone());
+    } else {
+        lines.push("No documentation available.".to_string());
+    }
+
+    // Code Examples
+    if !item.examples.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Examples"));
+        for (i, example) in item.examples.iter().take(3).enumerate() {
+            if item.examples.len() > 1 {
+                lines.push(format!("### Example {}", i + 1));
+            }
+            if let Some(desc) = &example.description {
+                lines.push(format!("_{}_", desc));
+            }
+            lines.push(format!("```rust\n{}\n```", example.code));
+            lines.push(String::new());
+        }
+        if item.examples.len() > 3 {
+            lines.push(format!("*... and {} more examples*", item.examples.len() - 3));
+        }
+    }
+
+    // Methods (for structs/enums/traits)
+    if !item.methods.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Methods"));
+        for method in item.methods.iter().take(15) {
+            let mut modifiers = Vec::new();
+            if method.is_unsafe {
+                modifiers.push("unsafe");
+            }
+            if method.is_const {
+                modifiers.push("const");
+            }
+            if method.is_async {
+                modifiers.push("async");
+            }
+            let modifier_str = if modifiers.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", modifiers.join(", "))
+            };
+            lines.push(format!("• **{}**{}", method.name, modifier_str));
+            if !method.signature.is_empty() {
+                lines.push(format!("  `{}`", trim_with_ellipsis(&method.signature, 100)));
+            }
+            if !method.summary.is_empty() {
+                lines.push(format!("  {}", trim_with_ellipsis(&method.summary, 120)));
+            }
+        }
+        if item.methods.len() > 15 {
+            lines.push(format!("*... and {} more methods*", item.methods.len() - 15));
+        }
+    }
+
+    // Trait Implementations
+    if !item.impl_traits.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Trait Implementations"));
+        for trait_name in item.impl_traits.iter().take(20) {
+            lines.push(format!("• `{}`", trait_name));
+        }
+        if item.impl_traits.len() > 20 {
+            lines.push(format!(
+                "*... and {} more traits*",
+                item.impl_traits.len() - 20
+            ));
+        }
+    }
+
+    // Associated Types (for traits)
+    if !item.associated_types.is_empty() {
+        lines.push(String::new());
+        lines.push(markdown::header(2, "Associated Types"));
+        for assoc in &item.associated_types {
+            let bounds = assoc
+                .bounds
+                .as_ref()
+                .map(|b| format!(": {}", b))
+                .unwrap_or_default();
+            let default = assoc
+                .default
+                .as_ref()
+                .map(|d| format!(" = {}", d))
+                .unwrap_or_default();
+            lines.push(format!("• **{}**{}{}", assoc.name, bounds, default));
+        }
+    }
+
+    // Links
+    lines.push(String::new());
+    if !item.url.is_empty() {
+        lines.push(format!("**Documentation:** {}", item.url));
+    }
+    if let Some(source) = &item.source_url {
+        lines.push(format!("**Source:** {}", source));
+    }
+
+    let metadata = json!({
+        "provider": "rust",
+        "kind": format!("{:?}", item.kind),
+        "crate": item.crate_name,
+        "version": item.crate_version,
+        "path": item.path,
+        "isDetailed": item.is_detailed,
+        "hasDeclaration": item.declaration.is_some(),
+        "hasDocumentation": item.documentation.is_some(),
+        "exampleCount": item.examples.len(),
+        "methodCount": item.methods.len(),
+        "traitImplCount": item.impl_traits.len(),
+        "associatedTypeCount": item.associated_types.len(),
+    });
+
+    text_response(lines).with_metadata(metadata)
+}
+
+fn build_rust_quick_summary(item: &multi_provider_client::rust::RustItem) -> Vec<String> {
+    let mut summary = Vec::new();
+
+    summary.push(format!("• Kind: {:?}", item.kind));
+    summary.push(format!("• Crate: {} v{}", item.crate_name, item.crate_version));
+
+    if !item.summary.is_empty() {
+        summary.push(format!("• Summary: {}", trim_with_ellipsis(&item.summary, 140)));
+    }
+
+    if item.declaration.is_some() {
+        summary.push("• Declaration: See signature above".to_string());
+    }
+
+    if !item.examples.is_empty() {
+        summary.push(format!("• Examples: {} code sample(s)", item.examples.len()));
+    }
+
+    if !item.methods.is_empty() {
+        let method_names: Vec<_> = item.methods.iter().take(3).map(|m| m.name.as_str()).collect();
+        summary.push(format!(
+            "• Methods: {} ({} total)",
+            method_names.join(", "),
+            item.methods.len()
+        ));
+    }
+
+    if !item.impl_traits.is_empty() {
+        let trait_names: Vec<_> = item.impl_traits.iter().take(3).cloned().collect();
+        summary.push(format!(
+            "• Implements: {} ({} total)",
+            trait_names.join(", "),
+            item.impl_traits.len()
+        ));
+    }
+
+    summary
 }
 
 fn normalize_path(path: &str, identifier: &str) -> String {

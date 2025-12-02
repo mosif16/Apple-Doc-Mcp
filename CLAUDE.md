@@ -9,6 +9,7 @@ Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that prov
 - **Telegram**: Bot API methods and types
 - **TON**: Blockchain API endpoints
 - **Cocoon**: Confidential computing documentation
+- **Rust**: Standard library (std, core, alloc) and any crate from docs.rs
 
 ## Build Commands
 
@@ -39,7 +40,14 @@ cargo clippy --all-targets
 │   ├── apple-docs-client/       # HTTP client for Apple's documentation API
 │   ├── apple-docs-core/         # Core logic: tools, state, services, transport
 │   ├── apple-docs-mcp/          # MCP protocol bootstrap and config resolution
-│   └── multi-provider-client/   # Clients for Telegram, TON, and Cocoon APIs
+│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, and Rust APIs
+│       ├── src/
+│       │   ├── telegram/        # Telegram Bot API client
+│       │   ├── ton/             # TON blockchain API client
+│       │   ├── cocoon/          # Cocoon confidential computing client
+│       │   ├── rust/            # Rust documentation client (std + docs.rs)
+│       │   ├── types.rs         # Unified types across all providers
+│       │   └── lib.rs           # ProviderClients aggregation
 ```
 
 ### Crate Responsibilities
@@ -50,7 +58,35 @@ cargo clippy --all-targets
 
 - **apple-docs-mcp**: Thin wrapper that resolves environment config (`APPLEDOC_CACHE_DIR`, `APPLEDOC_HEADLESS`) and launches the core server.
 
-- **multi-provider-client**: HTTP clients for non-Apple documentation providers (Telegram Bot API, TON blockchain, Cocoon).
+- **multi-provider-client**: HTTP clients for non-Apple documentation providers:
+  - `TelegramClient`: Telegram Bot API methods and types from `core.telegram.org`
+  - `TonClient`: TON blockchain endpoints from `tonapi.io` OpenAPI spec
+  - `CocoonClient`: Cocoon documentation from `cocoon.org`
+  - `RustClient`: Rust std library + any crate from `docs.rs`
+
+### Provider Architecture
+
+All providers implement a consistent interface through unified types:
+
+```rust
+pub enum ProviderType {
+    Apple,
+    Telegram,
+    TON,
+    Cocoon,
+    Rust,
+}
+
+pub struct ProviderClients {
+    pub apple: AppleDocsClient,
+    pub telegram: TelegramClient,
+    pub ton: TonClient,
+    pub cocoon: CocoonClient,
+    pub rust: RustClient,
+}
+```
+
+Each tool dispatches to the appropriate provider based on `active_provider` state.
 
 ### MCP Tools
 
@@ -58,13 +94,42 @@ Seven tools exposed via MCP (`crates/apple-docs-core/src/tools/`):
 
 | Tool | Purpose | Programmatic Calling |
 |------|---------|---------------------|
-| `discover_technologies` | Browse/filter frameworks from all providers | ✅ Enabled |
+| `discover_technologies` | Browse/filter frameworks from all providers | Enabled |
 | `choose_technology` | Select active framework for subsequent searches | - |
 | `current_technology` | Show currently selected framework | - |
-| `search_symbols` | Fuzzy keyword search within active framework or globally | ✅ Enabled |
-| `get_documentation` | Retrieve symbol documentation by path | ✅ Enabled |
+| `search_symbols` | Fuzzy keyword search within active framework or globally | Enabled |
+| `get_documentation` | Retrieve symbol documentation by path | Enabled |
 | `how_do_i` | Get guided recipes for common tasks | - |
-| `batch_documentation` | Fetch docs for multiple symbols in one call | ✅ Enabled |
+| `batch_documentation` | Fetch docs for multiple symbols in one call | Enabled |
+
+### Provider-Specific Features
+
+#### Apple
+- 50+ frameworks (SwiftUI, UIKit, Foundation, etc.)
+- Platform availability info (iOS, macOS, watchOS, tvOS)
+- Design guidance from Human Interface Guidelines
+- Knowledge base overlays with tips and related APIs
+
+#### Telegram
+- Bot API methods (sendMessage, getUpdates, etc.)
+- Type definitions (Update, Message, User, etc.)
+- Parameter documentation with required/optional flags
+
+#### TON
+- Blockchain API endpoints organized by category
+- OpenAPI-based documentation
+- Request/response schema information
+
+#### Cocoon
+- Confidential computing documentation
+- Architecture and TDX sections
+- Smart contract documentation
+
+#### Rust
+- Standard library: std, core, alloc
+- Dynamic crate loading from docs.rs
+- Search index parsing from rustdoc
+- Module and symbol documentation
 
 ### Advanced Tool Use Features
 
@@ -115,6 +180,20 @@ pub struct ToolDefinition {
 - Typo tolerance via edit distance
 - Symbol kind boosting (structs/classes rank higher)
 - Knowledge base and design guidance overlays
+- Provider-specific search dispatch
+
+### Caching Strategy
+
+All providers use two-tier caching:
+
+| Data Type | Memory TTL | Disk TTL |
+|-----------|------------|----------|
+| Apple frameworks | 30min | 24h |
+| Telegram spec | 1h | 24h |
+| TON OpenAPI | 1h | 24h |
+| Cocoon docs | 1h | 24h |
+| Rust std index | 24h | 7d |
+| Rust crate metadata | 30min | 24h |
 
 ## Environment Variables
 
@@ -130,9 +209,38 @@ pub struct ToolDefinition {
 # Test MCP handshake and tools/list
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}\n' | ./target/release/apple-docs-cli
 
-# Test a tool call
+# Test Apple provider
 printf '...\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"discover_technologies","arguments":{"provider":"apple"}},"id":3}\n' | ./target/release/apple-docs-cli
+
+# Test Rust provider
+printf '...\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"discover_technologies","arguments":{"provider":"rust"}},"id":3}\n' | ./target/release/apple-docs-cli
+
+# Test all providers
+printf '...\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"discover_technologies","arguments":{"provider":"all"}},"id":3}\n' | ./target/release/apple-docs-cli
 ```
+
+## Adding a New Provider
+
+1. Create a new module in `crates/multi-provider-client/src/<provider>/`
+   - `mod.rs` - exports
+   - `types.rs` - provider-specific data models
+   - `client.rs` - HTTP client with caching
+
+2. Update `crates/multi-provider-client/src/types.rs`:
+   - Add variant to `ProviderType` enum
+   - Add variant to `TechnologyKind` enum
+   - Add variant to `SymbolContent` enum
+   - Add `from_<provider>()` conversion methods
+
+3. Update `crates/multi-provider-client/src/lib.rs`:
+   - Add client to `ProviderClients` struct
+
+4. Update tools in `crates/apple-docs-core/src/tools/`:
+   - `discover.rs` - add provider filtering
+   - `choose_technology.rs` - add provider handler
+   - `search_symbols.rs` - add provider search
+   - `get_documentation.rs` - add provider docs
+   - `batch_documentation.rs` - add provider batch
 
 ## Maintenance Protocol
 

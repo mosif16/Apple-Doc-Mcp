@@ -8,6 +8,7 @@ use anyhow::{bail, Context, Result};
 use apple_docs_client::types::{
     extract_text, format_platforms, FrameworkData, PlatformInfo, ReferenceData, Technology,
 };
+use multi_provider_client::types::ProviderType;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
@@ -320,10 +321,18 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
 async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let scope = args.scope.as_deref().unwrap_or("technology").to_lowercase();
 
-    match scope.as_str() {
-        "technology" => search_active_technology(context, args).await,
-        "global" => search_all_technologies(context, args).await,
-        _ => bail!("Unsupported search scope \"{}\"", scope),
+    // Check the active provider to dispatch to the appropriate search
+    let provider = *context.state.active_provider.read().await;
+
+    match provider {
+        ProviderType::Rust => search_rust(context, args).await,
+        ProviderType::Apple => match scope.as_str() {
+            "technology" => search_active_technology(context, args).await,
+            "global" => search_all_technologies(context, args).await,
+            _ => bail!("Unsupported search scope \"{}\"", scope),
+        },
+        // For other providers, use unified technology state
+        _ => search_unified_provider(context, args, provider).await,
     }
 }
 
@@ -1582,6 +1591,240 @@ async fn log_search_query(
         let overflow = log.len() - MAX_QUERIES;
         log.drain(0..overflow);
     }
+}
+
+/// Search within Rust crates
+async fn search_rust(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
+    let technology = context
+        .state
+        .active_unified_technology
+        .read()
+        .await
+        .clone()
+        .context("No Rust technology selected. Use `choose_technology` first.")?;
+
+    let crate_name = technology
+        .identifier
+        .strip_prefix("rust:")
+        .unwrap_or("std");
+
+    let max_results = args.max_results.unwrap_or(20).max(1);
+
+    // Search within the crate
+    let results = context
+        .providers
+        .rust
+        .search(crate_name, &args.query)
+        .await?;
+
+    let match_count = results.len().min(max_results);
+
+    let mut lines = vec![
+        markdown::header(1, &format!("🔍 Search Results for \"{}\"", args.query)),
+        String::new(),
+        markdown::bold("Provider", "🦀 Rust"),
+        markdown::bold("Crate", crate_name),
+        markdown::bold("Matches", &match_count.to_string()),
+        String::new(),
+        markdown::header(2, "Symbols"),
+        String::new(),
+    ];
+
+    if results.is_empty() {
+        lines.push("No symbols matched those terms within this crate.".to_string());
+        lines.push("Try broader keywords or run `discover_technologies { \"provider\": \"rust\" }` to browse crates.".to_string());
+    } else {
+        for item in results.iter().take(max_results) {
+            lines.push(format!(
+                "• **{}** `{}` — {}",
+                item.name,
+                item.kind.as_str(),
+                trim_with_ellipsis(&item.summary, 100)
+            ));
+            lines.push(format!(
+                "  `get_documentation {{ \"path\": \"{}\" }}`",
+                item.path
+            ));
+            lines.push(format!("  URL: {}", item.url));
+            lines.push(String::new());
+        }
+    }
+
+    let metadata = json!({
+        "provider": "rust",
+        "crate": crate_name,
+        "query": args.query,
+        "matches": match_count,
+    });
+
+    log_search_query(&context, Some(crate_name.to_string()), "rust", &args.query, match_count).await;
+
+    Ok(text_response(lines).with_metadata(metadata))
+}
+
+/// Search for other unified providers (Telegram, TON, Cocoon)
+async fn search_unified_provider(
+    context: Arc<AppContext>,
+    args: Args,
+    provider: ProviderType,
+) -> Result<ToolResponse> {
+    let technology = context
+        .state
+        .active_unified_technology
+        .read()
+        .await
+        .clone()
+        .context("No technology selected. Use `choose_technology` first.")?;
+
+    let max_results = args.max_results.unwrap_or(20).max(1);
+    let query_lower = args.query.to_lowercase();
+
+    let mut lines = vec![
+        markdown::header(1, &format!("🔍 Search Results for \"{}\"", args.query)),
+        String::new(),
+        markdown::bold("Provider", provider.name()),
+        markdown::bold("Technology", &technology.title),
+        String::new(),
+    ];
+
+    // For non-Rust providers, use the unified framework data for search
+    match provider {
+        ProviderType::Telegram => {
+            let results = context.providers.telegram.search(&args.query).await?;
+            let match_count = results.len().min(max_results);
+            lines.push(markdown::bold("Matches", &match_count.to_string()));
+            lines.push(String::new());
+            lines.push(markdown::header(2, "Methods & Types"));
+            lines.push(String::new());
+
+            if results.is_empty() {
+                lines.push("No matches found.".to_string());
+            } else {
+                for item in results.iter().take(max_results) {
+                    lines.push(format!(
+                        "• **{}** `{}` — {}",
+                        item.name,
+                        item.kind,
+                        trim_with_ellipsis(&item.description, 100)
+                    ));
+                    lines.push(format!(
+                        "  `get_documentation {{ \"path\": \"{}\" }}`",
+                        item.name
+                    ));
+                    lines.push(String::new());
+                }
+            }
+
+            let metadata = json!({
+                "provider": "telegram",
+                "query": args.query,
+                "matches": match_count,
+            });
+            return Ok(text_response(lines).with_metadata(metadata));
+        }
+        ProviderType::TON => {
+            // TON search - search endpoints by operation_id or description
+            let category_id = technology.identifier.as_str();
+            if let Ok(category) = context.providers.ton.get_category(category_id).await {
+                let results: Vec<_> = category
+                    .endpoints
+                    .iter()
+                    .filter(|ep| {
+                        ep.operation_id.to_lowercase().contains(&query_lower)
+                            || ep.summary.as_ref().map_or(false, |s| s.to_lowercase().contains(&query_lower))
+                            || ep.description.as_ref().map_or(false, |d| d.to_lowercase().contains(&query_lower))
+                    })
+                    .take(max_results)
+                    .collect();
+
+                let match_count = results.len();
+                lines.push(markdown::bold("Matches", &match_count.to_string()));
+                lines.push(String::new());
+                lines.push(markdown::header(2, "Endpoints"));
+                lines.push(String::new());
+
+                if results.is_empty() {
+                    lines.push("No matches found.".to_string());
+                } else {
+                    for ep in results {
+                        lines.push(format!(
+                            "• **{}** `{}` — {}",
+                            ep.operation_id,
+                            ep.method.to_uppercase(),
+                            ep.summary.as_deref().unwrap_or("No description")
+                        ));
+                        lines.push(format!(
+                            "  `get_documentation {{ \"path\": \"{}\" }}`",
+                            ep.operation_id
+                        ));
+                        lines.push(String::new());
+                    }
+                }
+
+                let metadata = json!({
+                    "provider": "ton",
+                    "query": args.query,
+                    "matches": match_count,
+                });
+                return Ok(text_response(lines).with_metadata(metadata));
+            }
+        }
+        ProviderType::Cocoon => {
+            // Cocoon search - search documents
+            let section_id = technology.identifier.as_str();
+            if let Ok(section) = context.providers.cocoon.get_section(section_id).await {
+                let results: Vec<_> = section
+                    .documents
+                    .iter()
+                    .filter(|doc| {
+                        doc.title.to_lowercase().contains(&query_lower)
+                            || doc.summary.to_lowercase().contains(&query_lower)
+                    })
+                    .take(max_results)
+                    .collect();
+
+                let match_count = results.len();
+                lines.push(markdown::bold("Matches", &match_count.to_string()));
+                lines.push(String::new());
+                lines.push(markdown::header(2, "Documents"));
+                lines.push(String::new());
+
+                if results.is_empty() {
+                    lines.push("No matches found.".to_string());
+                } else {
+                    for doc in results {
+                        lines.push(format!(
+                            "• **{}** — {}",
+                            doc.title,
+                            trim_with_ellipsis(&doc.summary, 100)
+                        ));
+                        lines.push(format!(
+                            "  `get_documentation {{ \"path\": \"{}\" }}`",
+                            doc.path
+                        ));
+                        lines.push(String::new());
+                    }
+                }
+
+                let metadata = json!({
+                    "provider": "cocoon",
+                    "query": args.query,
+                    "matches": match_count,
+                });
+                return Ok(text_response(lines).with_metadata(metadata));
+            }
+        }
+        _ => {}
+    }
+
+    // Fallback for other providers
+    lines.push("Search not fully implemented for this provider.".to_string());
+    let metadata = json!({
+        "provider": provider.name(),
+        "query": args.query,
+        "matches": 0,
+    });
+    Ok(text_response(lines).with_metadata(metadata))
 }
 
 #[cfg(test)]

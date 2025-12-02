@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::cocoon::types::{CocoonDocument, CocoonSection, CocoonTechnology};
+use crate::rust::types::{RustCategory, RustItem, RustTechnology};
 use crate::telegram::types::{TelegramCategory, TelegramItem, TelegramTechnology};
 use crate::ton::types::{TonCategory, TonEndpoint, TonTechnology};
 
@@ -14,6 +15,7 @@ pub enum ProviderType {
     Telegram,
     TON,
     Cocoon,
+    Rust,
 }
 
 impl ProviderType {
@@ -24,6 +26,7 @@ impl ProviderType {
             Self::Telegram => "Telegram",
             Self::TON => "TON",
             Self::Cocoon => "Cocoon",
+            Self::Rust => "Rust",
         }
     }
 
@@ -34,6 +37,7 @@ impl ProviderType {
             Self::Telegram => "Telegram Bot API Documentation",
             Self::TON => "TON Blockchain API Documentation",
             Self::Cocoon => "Cocoon Verifiable AI Documentation",
+            Self::Rust => "Rust Language and Crate Documentation",
         }
     }
 }
@@ -65,6 +69,8 @@ pub enum TechnologyKind {
     BlockchainApi,
     /// Cocoon documentation section
     DocSection,
+    /// Rust crate (std, serde, tokio, etc.)
+    RustCrate,
 }
 
 impl UnifiedTechnology {
@@ -116,6 +122,17 @@ impl UnifiedTechnology {
             description: tech.description,
             url: tech.url,
             kind: TechnologyKind::DocSection,
+        }
+    }
+
+    pub fn from_rust(tech: RustTechnology) -> Self {
+        Self {
+            provider: ProviderType::Rust,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::RustCrate,
         }
     }
 }
@@ -260,6 +277,28 @@ impl UnifiedFrameworkData {
             sections: vec![],
         }
     }
+
+    pub fn from_rust(data: RustCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.path.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(item.kind.to_string()),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Rust,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
 }
 
 /// Unified symbol/item data
@@ -294,6 +333,15 @@ pub enum SymbolContent {
     },
     /// Cocoon markdown document
     Cocoon { markdown: String },
+    /// Rust documentation item
+    Rust {
+        crate_name: String,
+        crate_version: String,
+        module_path: String,
+        signature: Option<String>,
+        documentation: String,
+        source_url: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -423,6 +471,24 @@ impl UnifiedSymbolData {
             kind: Some("document".to_string()),
             content: SymbolContent::Cocoon {
                 markdown: data.content,
+            },
+            related: vec![],
+        }
+    }
+
+    pub fn from_rust(data: RustItem) -> Self {
+        Self {
+            provider: ProviderType::Rust,
+            title: data.name,
+            description: data.summary,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::Rust {
+                crate_name: data.crate_name,
+                crate_version: data.crate_version,
+                module_path: data.path,
+                signature: data.declaration,
+                documentation: data.documentation.unwrap_or_default(),
+                source_url: data.source_url,
             },
             related: vec![],
         }

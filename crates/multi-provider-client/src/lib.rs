@@ -1,4 +1,5 @@
 pub mod cocoon;
+pub mod rust;
 pub mod telegram;
 pub mod ton;
 pub mod types;
@@ -9,6 +10,7 @@ use anyhow::Result;
 use apple_docs_client::AppleDocsClient;
 
 use cocoon::CocoonClient;
+use rust::RustClient;
 use telegram::TelegramClient;
 use ton::TonClient;
 use types::{ProviderType, UnifiedFrameworkData, UnifiedSymbolData, UnifiedTechnology};
@@ -20,6 +22,7 @@ pub struct ProviderClients {
     pub telegram: TelegramClient,
     pub ton: TonClient,
     pub cocoon: CocoonClient,
+    pub rust: RustClient,
 }
 
 impl Default for ProviderClients {
@@ -36,6 +39,7 @@ impl ProviderClients {
             telegram: TelegramClient::new(),
             ton: TonClient::new(),
             cocoon: CocoonClient::new(),
+            rust: RustClient::new(),
         }
     }
 
@@ -43,11 +47,12 @@ impl ProviderClients {
     pub async fn get_all_technologies(
         &self,
     ) -> Result<HashMap<ProviderType, Vec<UnifiedTechnology>>> {
-        let (apple, telegram, ton, cocoon) = tokio::join!(
+        let (apple, telegram, ton, cocoon, rust) = tokio::join!(
             self.apple.get_technologies(),
             self.telegram.get_technologies(),
             self.ton.get_technologies(),
-            self.cocoon.get_technologies()
+            self.cocoon.get_technologies(),
+            self.rust.get_technologies()
         );
 
         let mut result = HashMap::new();
@@ -83,6 +88,13 @@ impl ProviderClients {
             );
         }
 
+        if let Ok(techs) = rust {
+            result.insert(
+                ProviderType::Rust,
+                techs.into_iter().map(UnifiedTechnology::from_rust).collect(),
+            );
+        }
+
         Ok(result)
     }
 
@@ -111,6 +123,10 @@ impl ProviderClients {
                 let techs = self.cocoon.get_technologies().await?;
                 Ok(techs.into_iter().map(UnifiedTechnology::from_cocoon).collect())
             }
+            ProviderType::Rust => {
+                let techs = self.rust.get_technologies().await?;
+                Ok(techs.into_iter().map(UnifiedTechnology::from_rust).collect())
+            }
         }
     }
 
@@ -137,6 +153,10 @@ impl ProviderClients {
                 let data = self.cocoon.get_section(identifier).await?;
                 Ok(UnifiedFrameworkData::from_cocoon(data))
             }
+            ProviderType::Rust => {
+                let data = self.rust.get_category(identifier).await?;
+                Ok(UnifiedFrameworkData::from_rust(data))
+            }
         }
     }
 
@@ -162,6 +182,10 @@ impl ProviderClients {
             ProviderType::Cocoon => {
                 let data = self.cocoon.get_document(path).await?;
                 Ok(UnifiedSymbolData::from_cocoon(data))
+            }
+            ProviderType::Rust => {
+                let data = self.rust.get_item(path).await?;
+                Ok(UnifiedSymbolData::from_rust(data))
             }
         }
     }

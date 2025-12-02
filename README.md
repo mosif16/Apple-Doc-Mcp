@@ -1,14 +1,18 @@
-# Apple Doc MCP
+# Multi-Provider Documentation MCP Server
 
-A Model Context Protocol (MCP) server written in Rust that provides seamless access to Apple's Developer Documentation directly within your AI coding assistant.
+A Model Context Protocol (MCP) server written in Rust that provides seamless access to developer documentation from multiple sources directly within your AI coding assistant.
 
+## Supported Documentation Providers
 
+| Provider | Description | Technologies |
+|----------|-------------|--------------|
+| **Apple** | iOS/macOS development | SwiftUI, UIKit, Foundation, and 50+ frameworks |
+| **Telegram** | Bot API documentation | Methods, types, and parameters |
+| **TON** | Blockchain API | REST endpoints and schemas |
+| **Cocoon** | Confidential computing | Architecture and smart contracts |
+| **Rust** | Rust documentation | std, core, alloc + any crate from docs.rs |
 
 ## Quick Start
-
-```"Use apple mcp select swiftui search tabbar"```
-
-Configure your MCP client (example):
 
 Build the Rust binary (requires Rust 1.76+):
 
@@ -16,58 +20,199 @@ Build the Rust binary (requires Rust 1.76+):
 cargo build --release
 ```
 
-Then point your MCP client at the compiled CLI:
+Configure your MCP client:
 
 ```json
 {
   "mcpServers": {
     "apple-docs": {
-      "command": "/absolute/path/to/apple-doc-mcp-main/target/release/apple-docs-cli"
+      "command": "/absolute/path/to/target/release/apple-docs-cli"
     }
   }
 }
 ```
 
-For local development you can run the server directly with:
+For local development:
 
 ```bash
 cargo run -p apple-docs-cli
 ```
 
-## 🔄 Typical Workflow
+## Typical Workflow
 
-1. Explore the catalogue:
-   - `discover_technologies { "query": "swift" }`
-   - `discover_technologies { "page": 2, "pageSize": 10 }`
-2. Lock in a framework:
-   - `choose_technology "SwiftUI"`
-   - `current_technology`
-3. Search within the active framework:
-   - `search_symbols { "query": "tab view layout" }`
-   - `search_symbols { "query": "toolbar", "maxResults": 5 }`
-4. Open documentation:
-   - `get_documentation { "path": "TabView" }`
-   - `get_documentation { "path": "documentation/SwiftUI/TabViewStyle" }`
-5. Ask for a guided recipe:
-   - `how_do_i { "task": "add search suggestions" }`
-   - `how_do_i { "task": "limit search with scopes" }`
+### 1. Discover Available Technologies
 
-### Search Tips
-- Start broad (e.g. `"tab"`, `"animation"`, `"gesture"`).
-- Try synonyms (`"sheet"` vs `"modal"`, `"toolbar"` vs `"tabbar"`).
-- Use multiple keywords (`"tab view layout"`) to narrow results.
-- If nothing turns up, re-run `discover_technologies` with a different keyword or pick another framework.
+```
+discover_technologies { "provider": "all" }
+discover_technologies { "provider": "apple", "query": "swift" }
+discover_technologies { "provider": "rust" }
+discover_technologies { "provider": "telegram" }
+```
 
-### Enriched Output
-- Quick Summaries now include inline Swift snippets (when available), platform availability, curated next steps, and Human Interface Guideline (HIG) highlights for layout, typography, color, and accessibility.
-- Search results show availability badges, SwiftUI ↔ UIKit/AppKit bridge hints, HIG “Design checklist” bullets, and related symbols pulled from the knowledge base.
-- `Integration Notes` in documentation call out migration tips, UIKit/AppKit counterparts, and related APIs you should explore next; the new **Design Guidance** section links directly to relevant HIG articles.
-- `current_technology` surfaces HIG primers for the selected framework so you can jump straight into design best practices, and `discover_technologies` labels frameworks with built-in design guidance.
+### 2. Select a Technology
 
-## 🧰 Available Tools
-- `discover_technologies` – browse/filter frameworks before selecting one.
-- `choose_technology` – set the active framework; required before searching docs.
-- `current_technology` – show the current selection and quick next steps.
-- `search_symbols` – fuzzy keyword search within the active framework.
-- `get_documentation` – view symbol docs (relative names allowed).
-- `how_do_i` – fetch a guided multi-step recipe for common SwiftUI tasks.
+```
+choose_technology { "identifier": "doc://com.apple.documentation/documentation/swiftui", "name": "SwiftUI" }
+choose_technology { "identifier": "rust:std", "name": "Rust std Library" }
+choose_technology { "identifier": "telegram:methods", "name": "Telegram Bot API Methods" }
+```
+
+### 3. Search Within the Active Technology
+
+```
+search_symbols { "query": "button" }
+search_symbols { "query": "HashMap", "maxResults": 10 }
+search_symbols { "query": "sendMessage" }
+```
+
+### 4. Get Documentation
+
+```
+get_documentation { "path": "Button" }
+get_documentation { "path": "std::collections::HashMap" }
+get_documentation { "path": "sendMessage" }
+```
+
+### 5. Ask for Guided Recipes (Apple only)
+
+```
+how_do_i { "task": "add search suggestions" }
+how_do_i { "task": "implement tab navigation" }
+```
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `discover_technologies` | Browse/filter frameworks from all providers |
+| `choose_technology` | Set the active framework for subsequent searches |
+| `current_technology` | Show current selection and quick next steps |
+| `search_symbols` | Fuzzy keyword search within the active framework |
+| `get_documentation` | View symbol/API documentation |
+| `how_do_i` | Fetch guided multi-step recipes (Apple) |
+| `batch_documentation` | Fetch docs for multiple symbols in one call |
+
+## Provider-Specific Examples
+
+### Apple (SwiftUI, UIKit, etc.)
+
+```
+discover_technologies { "provider": "apple", "category": "ui" }
+choose_technology { "identifier": "doc://com.apple.documentation/documentation/swiftui" }
+search_symbols { "query": "NavigationStack" }
+get_documentation { "path": "TabView" }
+```
+
+### Rust
+
+```
+discover_technologies { "provider": "rust" }
+choose_technology { "identifier": "rust:std", "name": "Rust std Library" }
+search_symbols { "query": "HashMap" }
+get_documentation { "path": "Vec" }
+```
+
+You can also load any crate from docs.rs dynamically:
+
+```
+choose_technology { "identifier": "rust:serde", "name": "serde" }
+choose_technology { "identifier": "rust:tokio", "name": "tokio" }
+```
+
+### Telegram Bot API
+
+```
+discover_technologies { "provider": "telegram" }
+choose_technology { "identifier": "telegram:methods" }
+search_symbols { "query": "send" }
+get_documentation { "path": "sendMessage" }
+```
+
+### TON Blockchain
+
+```
+discover_technologies { "provider": "ton" }
+choose_technology { "identifier": "ton:accounts" }
+search_symbols { "query": "account" }
+get_documentation { "path": "getAccountInfo" }
+```
+
+### Cocoon
+
+```
+discover_technologies { "provider": "cocoon" }
+choose_technology { "identifier": "cocoon:architecture" }
+search_symbols { "query": "tdx" }
+```
+
+## Search Tips
+
+- Start broad (e.g., `"button"`, `"animation"`, `"hash"`)
+- Try synonyms (`"sheet"` vs `"modal"`, `"map"` vs `"hashmap"`)
+- Use multiple keywords (`"tab view layout"`) to narrow results
+- Use `"scope": "global"` to search across all cached frameworks
+- If nothing turns up, try `discover_technologies` with a different provider
+
+## Enriched Output
+
+### Apple Provider
+- Quick summaries with inline Swift snippets
+- Platform availability badges (iOS, macOS, watchOS, tvOS)
+- Human Interface Guidelines (HIG) integration
+- SwiftUI/UIKit/AppKit bridge hints
+- Related APIs from knowledge base
+
+### Rust Provider
+- Module paths (e.g., `std::collections::HashMap`)
+- Item kinds (Struct, Enum, Trait, Function, etc.)
+- Links to docs.rs documentation
+- Crate version information
+
+### Telegram Provider
+- Method parameters with required/optional flags
+- Return type information
+- Field documentation for types
+
+### TON Provider
+- HTTP method and path
+- Parameter locations (path, query, body)
+- Response schema information
+
+## Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `APPLEDOC_CACHE_DIR` | Override disk cache location |
+| `APPLEDOC_HEADLESS` | Set to `1` to skip stdio transport (testing) |
+| `RUST_LOG` | Control logging (`info`, `debug`, `trace`) |
+
+## Architecture
+
+```
+├── apps/cli/                    # CLI entry point
+├── crates/
+│   ├── apple-docs-client/       # Apple documentation API client
+│   ├── apple-docs-core/         # MCP tools, state, services
+│   ├── apple-docs-mcp/          # MCP protocol bootstrap
+│   └── multi-provider-client/   # Telegram, TON, Cocoon, Rust clients
+```
+
+## Development
+
+```bash
+# Build
+cargo build --release
+
+# Run tests
+cargo test
+
+# Lint
+cargo clippy --all-targets
+
+# Test MCP handshake
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n' | ./target/release/apple-docs-cli
+```
+
+## License
+
+See LICENSE file for details.
