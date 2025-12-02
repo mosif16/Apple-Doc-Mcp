@@ -263,12 +263,19 @@ static ABBREVIATIONS: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     ])
 });
 
+/// Code execution caller identifier for programmatic tool calling.
+/// Enables Claude to orchestrate tools through code rather than sequential API calls.
+const CODE_EXECUTION_CALLER: &str = "code_execution_20250825";
+
 pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "search_symbols".to_string(),
             description:
-                "Search symbols within the selected technology or across all Apple documentation"
+                "Search symbols within the selected technology or across all Apple documentation. \
+                 Supports batch processing: call multiple times with different queries in code, \
+                 then aggregate results. Ideal for comparing APIs across frameworks or finding \
+                 related symbols programmatically."
                     .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -298,6 +305,10 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 // Global search: find symbols across all Apple frameworks
                 json!({"query": "URLSession", "scope": "global", "maxResults": 20}),
             ]),
+            // Enable programmatic calling for batch search operations.
+            // Allows Claude to write code that searches multiple queries and aggregates results,
+            // keeping intermediate results in sandbox to avoid context pollution.
+            allowed_callers: Some(vec![CODE_EXECUTION_CALLER.to_string()]),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

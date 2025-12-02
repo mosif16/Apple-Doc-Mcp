@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 
 use crate::state::{AppContext, ToolContent, ToolEntry, ToolHandler, ToolResponse};
 
+mod batch_documentation;
 mod choose_technology;
 mod current_technology;
 mod discover;
@@ -13,6 +14,7 @@ mod search_symbols;
 
 pub async fn register_tools(context: Arc<AppContext>) {
     let tools = [
+        batch_documentation::definition(),
         choose_technology::definition(),
         current_technology::definition(),
         discover::definition(),

@@ -46,6 +46,8 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 // Animation task
                 json!({"task": "animate view transitions"}),
             ]),
+            // Recipe lookup - returns structured guidance, less useful for batch processing
+            allowed_callers: None,
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

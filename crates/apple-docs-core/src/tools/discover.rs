@@ -141,11 +141,17 @@ static POPULARITY: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
     ])
 });
 
+/// Code execution caller identifier for programmatic tool calling.
+const CODE_EXECUTION_CALLER: &str = "code_execution_20250825";
+
 pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "discover_technologies".to_string(),
-            description: "Explore and filter available technologies/frameworks from Apple, Telegram, TON, and Cocoon".to_string(),
+            description: "Explore and filter available technologies/frameworks from Apple, Telegram, TON, and Cocoon. \
+                         Supports programmatic iteration: retrieve technology list in code, then loop through \
+                         to search or fetch documentation for each. Useful for cross-framework analysis."
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -185,6 +191,9 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 // Combined filters with pagination
                 json!({"query": "data", "provider": "apple", "page": 2, "pageSize": 10}),
             ]),
+            // Enable programmatic calling for technology enumeration.
+            // Allows Claude to iterate through frameworks and perform operations on each.
+            allowed_callers: Some(vec![CODE_EXECUTION_CALLER.to_string()]),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

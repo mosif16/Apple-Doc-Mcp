@@ -33,11 +33,17 @@ struct RenderOutput {
     metadata: Value,
 }
 
+/// Code execution caller identifier for programmatic tool calling.
+const CODE_EXECUTION_CALLER: &str = "code_execution_20250825";
+
 pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "get_documentation".to_string(),
-            description: "Get detailed documentation for symbols within the selected technology"
+            description: "Get detailed documentation for symbols within the selected technology. \
+                         Supports batch fetching: call multiple times in code to retrieve docs \
+                         for several symbols, then compare or aggregate results programmatically. \
+                         Returns summaries, platform availability, API references, and design guidance."
                 .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -59,6 +65,10 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 // Path with doc:// prefix (automatically stripped)
                 json!({"path": "doc://com.apple.documentation/documentation/swiftui/text"}),
             ]),
+            // Enable programmatic calling for batch documentation fetching.
+            // Allows Claude to write code that fetches multiple symbols and compares them,
+            // or extracts specific fields from each without flooding context.
+            allowed_callers: Some(vec![CODE_EXECUTION_CALLER.to_string()]),
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

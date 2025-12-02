@@ -18,6 +18,8 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
             input_schema: serde_json::json!({"type": "object", "properties": {}}),
             // No parameters needed - this tool just reports current state
             input_examples: None,
+            // State-reporting tool - no batch benefit from programmatic calling
+            allowed_callers: None,
         },
         wrap_handler(|context, _value| async move { handle(context).await }),
     )

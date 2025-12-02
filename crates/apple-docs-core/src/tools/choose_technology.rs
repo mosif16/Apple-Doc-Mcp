@@ -51,6 +51,9 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 // Cocoon: by identifier
                 json!({"identifier": "cocoon:architecture"}),
             ]),
+            // State-setting tool - typically called once before batch operations.
+            // Programmatic calling has limited benefit.
+            allowed_callers: None,
         },
         wrap_handler(|context, value| async move {
             let args: Args = parse_args(value)?;

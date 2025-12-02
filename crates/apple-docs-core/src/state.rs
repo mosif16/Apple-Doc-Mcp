@@ -222,6 +222,12 @@ pub struct ToolDefinition {
     /// These help Claude understand parameter combinations and formatting.
     #[serde(rename = "inputExamples", skip_serializing_if = "Option::is_none")]
     pub input_examples: Option<Vec<serde_json::Value>>,
+    /// Enables programmatic tool calling - allows Claude to orchestrate this tool
+    /// through code execution rather than sequential API calls.
+    /// Set to `["code_execution_20250825"]` to enable.
+    /// Benefits: 37% token reduction, 95% fewer inference passes for batch operations.
+    #[serde(rename = "allowedCallers", skip_serializing_if = "Option::is_none")]
+    pub allowed_callers: Option<Vec<String>>,
 }
 
 #[derive(Clone, Serialize)]
