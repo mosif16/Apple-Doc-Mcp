@@ -3,7 +3,8 @@ members = [
 	"apps/cli",
 	"crates/apple-docs-client",
 	"crates/apple-docs-core",
-	"crates/apple-docs-mcp"
+	"crates/apple-docs-mcp",
+	"crates/multi-provider-client"
 ]
 resolver = "2"
 
@@ -15,6 +16,7 @@ authors = ["Mohammed Sayf <recordandlearn@example.com>"]
 
 [workspace.dependencies]
 anyhow = "1.0"
+async-trait = "0.1"
 config = "0.14"
 dashmap = "5.5"
 directories = "5.0"

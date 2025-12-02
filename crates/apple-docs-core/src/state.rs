@@ -8,6 +8,10 @@ use apple_docs_client::{
     AppleDocsClient,
 };
 use futures::future::BoxFuture;
+use multi_provider_client::{
+    types::{ProviderType, UnifiedTechnology},
+    ProviderClients,
+};
 use serde::Serialize;
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -18,6 +22,7 @@ use crate::services::design_guidance::DesignSection;
 #[derive(Clone)]
 pub struct AppContext {
     pub client: Arc<AppleDocsClient>,
+    pub providers: Arc<ProviderClients>,
     pub state: Arc<ServerState>,
     pub tools: Arc<ToolRegistry>,
 }
@@ -26,6 +31,7 @@ impl AppContext {
     pub fn new(client: AppleDocsClient) -> Self {
         Self {
             client: Arc::new(client),
+            providers: Arc::new(ProviderClients::new()),
             state: Arc::new(ServerState::default()),
             tools: Arc::new(ToolRegistry::default()),
         }
@@ -51,9 +57,112 @@ impl AppContext {
     }
 }
 
+/// Multi-provider aware context for unified documentation access
+#[derive(Clone)]
+pub struct MultiProviderContext {
+    pub providers: Arc<ProviderClients>,
+    pub state: Arc<MultiProviderState>,
+    pub tools: Arc<ToolRegistry>,
+}
+
+impl MultiProviderContext {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            providers: Arc::new(ProviderClients::new()),
+            state: Arc::new(MultiProviderState::default()),
+            tools: Arc::new(ToolRegistry::default()),
+        }
+    }
+
+    /// Record a telemetry entry
+    pub async fn record_telemetry(&self, entry: TelemetryEntry) {
+        let mut guard = self.state.telemetry_log.lock().await;
+        guard.push(entry);
+        const MAX_ENTRIES: usize = 200;
+        if guard.len() > MAX_ENTRIES {
+            let overflow = guard.len() - MAX_ENTRIES;
+            guard.drain(0..overflow);
+        }
+    }
+
+    /// Get a snapshot of telemetry entries
+    pub async fn telemetry_snapshot(&self) -> Vec<TelemetryEntry> {
+        self.state.telemetry_log.lock().await.clone()
+    }
+
+    /// Get the currently active provider
+    pub async fn active_provider(&self) -> ProviderType {
+        *self.state.active_provider.read().await
+    }
+
+    /// Set the active provider
+    pub async fn set_active_provider(&self, provider: ProviderType) {
+        *self.state.active_provider.write().await = provider;
+    }
+
+    /// Get the active technology (unified)
+    pub async fn active_technology(&self) -> Option<UnifiedTechnology> {
+        self.state.active_unified_technology.read().await.clone()
+    }
+
+    /// Set the active technology
+    pub async fn set_active_technology(&self, tech: Option<UnifiedTechnology>) {
+        *self.state.active_unified_technology.write().await = tech;
+    }
+}
+
+impl Default for MultiProviderContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// State for multi-provider context
+#[derive(Default)]
+pub struct MultiProviderState {
+    /// Currently active provider
+    pub active_provider: RwLock<ProviderType>,
+    /// Currently selected technology (unified representation)
+    pub active_unified_technology: RwLock<Option<UnifiedTechnology>>,
+    /// Legacy: Apple-specific active technology (for backward compatibility)
+    pub active_apple_technology: RwLock<Option<Technology>>,
+    /// Cache of framework data per provider
+    pub framework_cache: RwLock<Option<FrameworkData>>,
+    /// Search index entries
+    pub framework_index: RwLock<Option<Vec<FrameworkIndexEntry>>>,
+    /// Global search indexes by framework
+    pub global_indexes: RwLock<HashMap<String, Vec<FrameworkIndexEntry>>>,
+    /// Expanded identifiers for navigation
+    pub expanded_identifiers: Mutex<HashSet<String>>,
+    /// Last fetched symbol
+    pub last_symbol: RwLock<Option<SymbolData>>,
+    /// Last discovery results
+    pub last_discovery: RwLock<Option<MultiProviderDiscoverySnapshot>>,
+    /// Telemetry log
+    pub telemetry_log: Mutex<Vec<TelemetryEntry>>,
+    /// Recent search queries
+    pub recent_queries: Mutex<Vec<SearchQueryLog>>,
+    /// Design guidance cache
+    pub design_guidance_cache: RwLock<HashMap<String, Arc<DesignSection>>>,
+}
+
+/// Discovery snapshot for multi-provider results
+#[derive(Clone)]
+pub struct MultiProviderDiscoverySnapshot {
+    pub query: Option<String>,
+    pub provider_filter: Option<ProviderType>,
+    pub results: Vec<UnifiedTechnology>,
+}
+
 #[derive(Default)]
 pub struct ServerState {
+    /// Currently active provider (Apple by default)
+    pub active_provider: RwLock<ProviderType>,
+    /// Active technology (Apple-specific for backward compatibility)
     pub active_technology: RwLock<Option<Technology>>,
+    /// Active unified technology (provider-agnostic)
+    pub active_unified_technology: RwLock<Option<UnifiedTechnology>>,
     pub framework_cache: RwLock<Option<FrameworkData>>,
     pub framework_index: RwLock<Option<Vec<FrameworkIndexEntry>>>,
     pub global_indexes: RwLock<HashMap<String, Vec<FrameworkIndexEntry>>>,

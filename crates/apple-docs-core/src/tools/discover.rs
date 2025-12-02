@@ -1,7 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
-use apple_docs_client::types::{extract_text, Technology};
+use apple_docs_client::types::extract_text;
+use multi_provider_client::types::{ProviderType, TechnologyKind, UnifiedTechnology};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::json;
@@ -9,7 +10,7 @@ use serde_json::json;
 use crate::{
     markdown,
     services::{design_guidance, knowledge},
-    state::{AppContext, DiscoverySnapshot, ToolDefinition, ToolHandler, ToolResponse},
+    state::{AppContext, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
 };
 
@@ -22,6 +23,8 @@ struct Args {
     category: Option<String>,
     #[serde(rename = "sortBy")]
     sort_by: Option<String>,
+    /// Filter by provider: "apple", "telegram", "ton", "cocoon", or "all" (default)
+    provider: Option<String>,
 }
 
 /// Technology categories for filtering
@@ -142,7 +145,7 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
     (
         ToolDefinition {
             name: "discover_technologies".to_string(),
-            description: "Explore and filter available Apple technologies/frameworks".to_string(),
+            description: "Explore and filter available technologies/frameworks from Apple, Telegram, TON, and Cocoon".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -150,10 +153,15 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                         "type": "string",
                         "description": "Filter by technology name or description"
                     },
+                    "provider": {
+                        "type": "string",
+                        "enum": ["apple", "telegram", "ton", "cocoon", "all"],
+                        "description": "Filter by documentation provider (default: all). Use 'apple' for iOS/macOS frameworks, 'telegram' for Bot API, 'ton' for blockchain API, 'cocoon' for confidential computing"
+                    },
                     "category": {
                         "type": "string",
                         "enum": ["ui", "data", "network", "media", "system", "accessibility", "testing", "developer"],
-                        "description": "Filter by category: ui (SwiftUI, UIKit), data (CoreData, CloudKit), network, media (AV, Metal), system (Location, Notifications), accessibility, testing, developer"
+                        "description": "Filter by category (Apple only): ui (SwiftUI, UIKit), data (CoreData, CloudKit), network, media (AV, Metal), system (Location, Notifications), accessibility, testing, developer"
                     },
                     "sortBy": {
                         "type": "string",
@@ -177,69 +185,113 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     let page_size = args.page_size.unwrap_or(25).clamp(1, 100);
     let category_lower = args.category.as_ref().map(|c| c.to_lowercase());
     let sort_by = args.sort_by.as_deref().unwrap_or("alphabetical");
+    let provider_filter = args.provider.as_deref().unwrap_or("all").to_lowercase();
 
-    let technologies = context.client.get_technologies().await?;
-    let mut frameworks: Vec<Technology> = technologies
-        .values()
-        .filter(|tech| tech.kind == "symbol" && tech.role == "collection")
-        .cloned()
-        .collect();
+    // Collect technologies from all requested providers
+    let mut unified_techs: Vec<UnifiedTechnology> = Vec::new();
 
-    // Apply category filter
-    if let Some(category) = &category_lower {
-        if let Some(category_frameworks) = CATEGORIES.get(category.as_str()) {
-            frameworks.retain(|tech| {
-                let title_lower = tech.title.to_lowercase();
-                category_frameworks
-                    .iter()
-                    .any(|cf| title_lower.contains(cf))
-            });
+    // Apple technologies
+    if provider_filter == "all" || provider_filter == "apple" {
+        let technologies = context.client.get_technologies().await?;
+        let apple_techs: Vec<UnifiedTechnology> = technologies
+            .values()
+            .filter(|tech| tech.kind == "symbol" && tech.role == "collection")
+            .map(|tech| UnifiedTechnology {
+                provider: ProviderType::Apple,
+                identifier: tech.identifier.clone(),
+                title: tech.title.clone(),
+                description: extract_text(&tech.r#abstract),
+                url: Some(format!("https://developer.apple.com{}", tech.url)),
+                kind: TechnologyKind::Framework,
+            })
+            .collect();
+
+        // Apply category filter (Apple only)
+        let filtered_apple = if let Some(category) = &category_lower {
+            if let Some(category_frameworks) = CATEGORIES.get(category.as_str()) {
+                apple_techs
+                    .into_iter()
+                    .filter(|tech| {
+                        let title_lower = tech.title.to_lowercase();
+                        category_frameworks.iter().any(|cf| title_lower.contains(cf))
+                    })
+                    .collect()
+            } else {
+                apple_techs
+            }
+        } else {
+            apple_techs
+        };
+
+        unified_techs.extend(filtered_apple);
+    }
+
+    // Telegram technologies
+    if provider_filter == "all" || provider_filter == "telegram" {
+        if let Ok(telegram_techs) = context.providers.telegram.get_technologies().await {
+            unified_techs.extend(telegram_techs.into_iter().map(UnifiedTechnology::from_telegram));
         }
     }
 
-    // Apply query filter with normalization support
+    // TON technologies
+    if provider_filter == "all" || provider_filter == "ton" {
+        if let Ok(ton_techs) = context.providers.ton.get_technologies().await {
+            unified_techs.extend(ton_techs.into_iter().map(UnifiedTechnology::from_ton));
+        }
+    }
+
+    // Cocoon technologies
+    if provider_filter == "all" || provider_filter == "cocoon" {
+        if let Ok(cocoon_techs) = context.providers.cocoon.get_technologies().await {
+            unified_techs.extend(cocoon_techs.into_iter().map(UnifiedTechnology::from_cocoon));
+        }
+    }
+
+    // Apply query filter
     if let Some(query) = &args.query {
-        frameworks.retain(|tech| {
+        let query_lower = query.to_lowercase();
+        unified_techs.retain(|tech| {
             matches_framework_query(&tech.title, query)
-                || extract_text(&tech.r#abstract)
-                    .to_lowercase()
-                    .contains(&query.to_lowercase())
+                || tech.description.to_lowercase().contains(&query_lower)
         });
     }
 
     // Sort based on preference
     match sort_by {
         "relevance" => {
-            frameworks.sort_by(|a, b| {
-                let score_a = get_relevance_score(&a.title, &args.query);
-                let score_b = get_relevance_score(&b.title, &args.query);
+            unified_techs.sort_by(|a, b| {
+                let score_a = get_unified_relevance_score(a, &args.query);
+                let score_b = get_unified_relevance_score(b, &args.query);
                 score_b.cmp(&score_a).then_with(|| a.title.cmp(&b.title))
             });
         }
         _ => {
-            frameworks.sort_by(|a, b| a.title.cmp(&b.title));
+            // Sort by provider first, then alphabetically
+            unified_techs.sort_by(|a, b| {
+                provider_sort_order(&a.provider)
+                    .cmp(&provider_sort_order(&b.provider))
+                    .then_with(|| a.title.cmp(&b.title))
+            });
         }
     }
 
-    let total_pages = frameworks.len().max(1).div_ceil(page_size);
+    let total_pages = unified_techs.len().max(1).div_ceil(page_size);
     let current_page = page.min(total_pages);
     let start = (current_page - 1) * page_size;
-    let page_items = frameworks
+    let page_items: Vec<UnifiedTechnology> = unified_techs
         .iter()
         .skip(start)
         .take(page_size)
         .cloned()
-        .collect::<Vec<_>>();
-
-    *context.state.last_discovery.write().await = Some(DiscoverySnapshot {
-        query: args.query.clone(),
-        results: page_items.clone(),
-    });
+        .collect();
 
     // Build filter description
     let mut filter_parts = Vec::new();
     if let Some(query) = &args.query {
         filter_parts.push(format!("\"{}\"", query));
+    }
+    if provider_filter != "all" {
+        filter_parts.push(format!("provider: {}", provider_filter));
     }
     if let Some(category) = &args.category {
         filter_parts.push(format!("category: {}", category));
@@ -251,101 +303,192 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
     };
 
     let mut lines = vec![
-        markdown::header(1, &format!("Discover Apple Technologies{}", filter_desc)),
+        markdown::header(1, &format!("Discover Technologies{}", filter_desc)),
         String::new(),
-        markdown::bold("Matches", &frameworks.len().to_string()),
+        markdown::bold("Matches", &unified_techs.len().to_string()),
         markdown::bold(
             "Page",
             &format!("{} / {}", current_page, total_pages.max(1)),
         ),
-        markdown::bold("Sort", if sort_by == "relevance" { "by relevance" } else { "alphabetical" }),
+        markdown::bold("Sort", if sort_by == "relevance" { "by relevance" } else { "by provider" }),
         String::new(),
     ];
 
-    // Show available categories hint when no filter applied
-    if args.query.is_none() && args.category.is_none() {
-        lines.push("*Tip: Filter by category: `discover_technologies { \"category\": \"ui\" }`*".to_string());
-        lines.push("*Categories: ui, data, network, media, system, accessibility, testing, developer*".to_string());
+    // Show available providers hint when no filter applied
+    if args.query.is_none() && provider_filter == "all" {
+        lines.push("*Available providers: apple (iOS/macOS), telegram (Bot API), ton (Blockchain), cocoon (Confidential Computing)*".to_string());
+        lines.push("*Filter: `discover_technologies { \"provider\": \"telegram\" }`*".to_string());
         lines.push(String::new());
     }
 
-    lines.push(markdown::header(2, "Available Frameworks"));
+    // Group by provider for better display
+    let mut current_provider: Option<ProviderType> = None;
+    for tech in &page_items {
+        // Add provider header if changed
+        if current_provider.as_ref() != Some(&tech.provider) {
+            current_provider = Some(tech.provider.clone());
+            lines.push(markdown::header(2, &format!("{} Technologies", provider_display_name(&tech.provider))));
+            lines.push(String::new());
+        }
 
-    for framework in &page_items {
-        let description = extract_text(&framework.r#abstract);
-        let is_design = framework
-            .url
-            .to_ascii_lowercase()
-            .starts_with("/design/human-interface-guidelines");
-        let has_primers = design_guidance::has_primer_mapping(framework);
-        let recipe_count = knowledge::recipes_for(&framework.title).len();
-        let mut title_line = format!("### {}", framework.title);
-        if is_design || has_primers {
-            title_line.push_str(" · [Design]");
+        let mut title_line = format!("### {}", tech.title);
+
+        // Apple-specific badges
+        if tech.provider == ProviderType::Apple {
+            let recipe_count = knowledge::recipes_for(&tech.title).len();
+            if recipe_count > 0 {
+                title_line.push_str(" · [Recipes]");
+            }
         }
+
+        // Kind badge
+        let kind_badge = match &tech.kind {
+            TechnologyKind::Framework => "",
+            TechnologyKind::ApiCategory => " [API]",
+            TechnologyKind::BlockchainApi => " [Blockchain]",
+            TechnologyKind::DocSection => " [Docs]",
+        };
+        title_line.push_str(kind_badge);
+
         lines.push(title_line);
-        if !description.is_empty() {
-            lines.push(format!("   {}", trim_with_ellipsis(&description, 180)));
+        if !tech.description.is_empty() {
+            lines.push(format!("   {}", trim_with_ellipsis(&tech.description, 180)));
         }
-        if is_design {
-            lines.push(
-                "   • Focus: Human Interface Guidelines primers for multi-platform design."
-                    .to_string(),
-            );
-        } else if has_primers {
-            lines.push(
-                "   • Design support: SwiftUI/UIKit mappings include layout, typography, and color guidance."
-                    .to_string(),
-            );
-        }
-        lines.push(format!("   • **Identifier:** {}", framework.identifier));
-        if recipe_count > 0 {
-            lines.push(format!(
-                "   • Recipes available: {} (`how_do_i {{ \"task\": \"...\" }}`)",
-                recipe_count
-            ));
-        }
+        lines.push(format!("   • **Identifier:** {}", tech.identifier));
         lines.push(format!(
-            "   • **Select:** `choose_technology \"{}\"`",
-            framework.title
+            "   • **Select:** `choose_technology {{ \"identifier\": \"{}\" }}`",
+            tech.identifier
         ));
         lines.push(String::new());
     }
 
-    lines.extend(build_pagination(
+    lines.extend(build_pagination_with_provider(
         args.query.as_deref(),
+        &provider_filter,
         current_page,
         total_pages,
     ));
-    lines.push(String::new());
-    lines.push("## Next Step".to_string());
-    let design_badged = page_items
-        .iter()
-        .filter(|framework| {
-            framework
-                .url
-                .to_ascii_lowercase()
-                .starts_with("/design/human-interface-guidelines")
-                || design_guidance::has_primer_mapping(framework)
-        })
-        .count();
-    let recipes_on_page: usize = page_items
-        .iter()
-        .map(|framework| knowledge::recipes_for(&framework.title).len())
-        .sum();
+
+    // Count by provider
+    let apple_count = unified_techs.iter().filter(|t| t.provider == ProviderType::Apple).count();
+    let telegram_count = unified_techs.iter().filter(|t| t.provider == ProviderType::Telegram).count();
+    let ton_count = unified_techs.iter().filter(|t| t.provider == ProviderType::TON).count();
+    let cocoon_count = unified_techs.iter().filter(|t| t.provider == ProviderType::Cocoon).count();
+
     let metadata = json!({
-        "totalMatches": frameworks.len(),
+        "totalMatches": unified_techs.len(),
         "page": current_page,
         "pageSize": page_size,
         "pageItems": page_items.len(),
-        "designFlaggedOnPage": design_badged,
-        "recipesOnPage": recipes_on_page,
         "query": args.query,
+        "provider": provider_filter,
         "category": args.category,
         "sortBy": sort_by,
+        "providerCounts": {
+            "apple": apple_count,
+            "telegram": telegram_count,
+            "ton": ton_count,
+            "cocoon": cocoon_count,
+        }
     });
 
     Ok(text_response(lines).with_metadata(metadata))
+}
+
+/// Get display name for provider
+fn provider_display_name(provider: &ProviderType) -> &'static str {
+    match provider {
+        ProviderType::Apple => "🍎 Apple",
+        ProviderType::Telegram => "📱 Telegram",
+        ProviderType::TON => "💎 TON Blockchain",
+        ProviderType::Cocoon => "🥥 Cocoon",
+    }
+}
+
+/// Get sort order for provider (Apple first, then alphabetically)
+fn provider_sort_order(provider: &ProviderType) -> u8 {
+    match provider {
+        ProviderType::Apple => 0,
+        ProviderType::Telegram => 1,
+        ProviderType::TON => 2,
+        ProviderType::Cocoon => 3,
+    }
+}
+
+/// Calculate relevance score for unified technology
+fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>) -> i32 {
+    let title_lower = tech.title.to_lowercase();
+
+    // Base popularity score (Apple frameworks have predefined scores)
+    let mut score = if tech.provider == ProviderType::Apple {
+        POPULARITY
+            .iter()
+            .find(|(name, _)| title_lower.contains(*name))
+            .map(|(_, s)| *s)
+            .unwrap_or(30)
+    } else {
+        // Non-Apple providers get base score based on kind
+        match &tech.kind {
+            TechnologyKind::ApiCategory => 40,
+            TechnologyKind::BlockchainApi => 35,
+            TechnologyKind::DocSection => 30,
+            TechnologyKind::Framework => 50,
+        }
+    };
+
+    // Query match boost
+    if let Some(q) = query {
+        let q_lower = q.to_lowercase();
+        let title_normalized = normalize_framework_query(&tech.title);
+        let query_normalized = normalize_framework_query(q);
+
+        if title_lower == q_lower || title_normalized == query_normalized {
+            score += 50;
+        } else if title_lower.starts_with(&q_lower) || title_normalized.starts_with(&query_normalized) {
+            score += 30;
+        } else if title_lower.contains(&q_lower) || title_normalized.contains(&query_normalized) {
+            score += 15;
+        }
+    }
+
+    // Recipe availability boost (Apple only)
+    if tech.provider == ProviderType::Apple {
+        let recipe_count = knowledge::recipes_for(&tech.title).len();
+        if recipe_count > 0 {
+            score += recipe_count as i32 * 3;
+        }
+    }
+
+    score
+}
+
+fn build_pagination_with_provider(query: Option<&str>, provider: &str, current: usize, total: usize) -> Vec<String> {
+    if total <= 1 {
+        return vec![];
+    }
+
+    let query = query.unwrap_or("");
+    let mut items = Vec::new();
+    if current > 1 {
+        items.push(format!(
+            "• Previous: `discover_technologies {{ \"query\": \"{}\", \"provider\": \"{}\", \"page\": {} }}`",
+            query, provider, current - 1
+        ));
+    }
+    if current < total {
+        items.push(format!(
+            "• Next: `discover_technologies {{ \"query\": \"{}\", \"provider\": \"{}\", \"page\": {} }}`",
+            query, provider, current + 1
+        ));
+    }
+
+    if items.is_empty() {
+        Vec::new()
+    } else {
+        let mut lines = vec!["*Pagination*".to_string()];
+        lines.extend(items);
+        lines
+    }
 }
 
 /// Calculate relevance score for a technology based on popularity and query match

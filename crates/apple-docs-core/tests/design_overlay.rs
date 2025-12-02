@@ -174,9 +174,10 @@ async fn discover_flags_design_support() {
     .await
     .expect("discover succeeds");
     let text = &response.content[0].text;
+    // Accept either [Design] (legacy) or [Recipes] (new multi-provider format)
     assert!(
-        text.contains("[Design]"),
-        "expected design badge in discover output: {text}"
+        text.contains("[Design]") || text.contains("[Recipes]"),
+        "expected design or recipes badge in discover output: {text}"
     );
 }
 

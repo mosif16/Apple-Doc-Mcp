@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 apple-docs-client = {path = "../apple-docs-client"}
+multi-provider-client = {path = "../multi-provider-client"}
 anyhow = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}
