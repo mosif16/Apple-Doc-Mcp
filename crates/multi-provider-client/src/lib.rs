@@ -1,8 +1,10 @@
 pub mod cocoon;
+pub mod mdn;
 pub mod rust;
 pub mod telegram;
 pub mod ton;
 pub mod types;
+pub mod web_frameworks;
 
 use std::collections::HashMap;
 
@@ -10,10 +12,12 @@ use anyhow::Result;
 use docs_mcp_client::AppleDocsClient;
 
 use cocoon::CocoonClient;
+use mdn::MdnClient;
 use rust::RustClient;
 use telegram::TelegramClient;
 use ton::TonClient;
 use types::{ProviderType, UnifiedFrameworkData, UnifiedSymbolData, UnifiedTechnology};
+use web_frameworks::WebFrameworksClient;
 
 /// All provider clients for simultaneous access
 #[derive(Debug)]
@@ -23,6 +27,8 @@ pub struct ProviderClients {
     pub ton: TonClient,
     pub cocoon: CocoonClient,
     pub rust: RustClient,
+    pub mdn: MdnClient,
+    pub web_frameworks: WebFrameworksClient,
 }
 
 impl Default for ProviderClients {
@@ -40,6 +46,8 @@ impl ProviderClients {
             ton: TonClient::new(),
             cocoon: CocoonClient::new(),
             rust: RustClient::new(),
+            mdn: MdnClient::new(),
+            web_frameworks: WebFrameworksClient::new(),
         }
     }
 
@@ -47,12 +55,14 @@ impl ProviderClients {
     pub async fn get_all_technologies(
         &self,
     ) -> Result<HashMap<ProviderType, Vec<UnifiedTechnology>>> {
-        let (apple, telegram, ton, cocoon, rust) = tokio::join!(
+        let (apple, telegram, ton, cocoon, rust, mdn, webfw) = tokio::join!(
             self.apple.get_technologies(),
             self.telegram.get_technologies(),
             self.ton.get_technologies(),
             self.cocoon.get_technologies(),
-            self.rust.get_technologies()
+            self.rust.get_technologies(),
+            self.mdn.get_technologies(),
+            self.web_frameworks.get_technologies()
         );
 
         let mut result = HashMap::new();
@@ -95,6 +105,20 @@ impl ProviderClients {
             );
         }
 
+        if let Ok(techs) = mdn {
+            result.insert(
+                ProviderType::Mdn,
+                techs.into_iter().map(UnifiedTechnology::from_mdn).collect(),
+            );
+        }
+
+        if let Ok(techs) = webfw {
+            result.insert(
+                ProviderType::WebFrameworks,
+                techs.into_iter().map(UnifiedTechnology::from_web_framework).collect(),
+            );
+        }
+
         Ok(result)
     }
 
@@ -127,6 +151,14 @@ impl ProviderClients {
                 let techs = self.rust.get_technologies().await?;
                 Ok(techs.into_iter().map(UnifiedTechnology::from_rust).collect())
             }
+            ProviderType::Mdn => {
+                let techs = self.mdn.get_technologies().await?;
+                Ok(techs.into_iter().map(UnifiedTechnology::from_mdn).collect())
+            }
+            ProviderType::WebFrameworks => {
+                let techs = self.web_frameworks.get_technologies().await?;
+                Ok(techs.into_iter().map(UnifiedTechnology::from_web_framework).collect())
+            }
         }
     }
 
@@ -157,6 +189,14 @@ impl ProviderClients {
                 let data = self.rust.get_category(identifier).await?;
                 Ok(UnifiedFrameworkData::from_rust(data))
             }
+            ProviderType::Mdn | ProviderType::WebFrameworks => {
+                // MDN and WebFrameworks don't have a framework/category structure
+                // like other providers - they work directly with articles
+                anyhow::bail!(
+                    "Provider {} does not support framework/category browsing. Use get_symbol for article access.",
+                    provider.name()
+                )
+            }
         }
     }
 
@@ -186,6 +226,19 @@ impl ProviderClients {
             ProviderType::Rust => {
                 let data = self.rust.get_item(path).await?;
                 Ok(UnifiedSymbolData::from_rust(data))
+            }
+            ProviderType::Mdn => {
+                let data = self.mdn.get_article(path).await?;
+                Ok(UnifiedSymbolData::from_mdn(data))
+            }
+            ProviderType::WebFrameworks => {
+                // Parse the path to determine framework (e.g., "react/reference/useState")
+                let parts: Vec<&str> = path.splitn(2, '/').collect();
+                let framework = web_frameworks::types::WebFramework::from_str_opt(parts[0])
+                    .unwrap_or(web_frameworks::types::WebFramework::React);
+                let slug = parts.get(1).unwrap_or(&path);
+                let data = self.web_frameworks.get_article(framework, slug).await?;
+                Ok(UnifiedSymbolData::from_web_framework(data))
             }
         }
     }

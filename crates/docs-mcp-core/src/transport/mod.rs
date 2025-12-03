@@ -9,7 +9,7 @@ use tracing::{debug, info, warn};
 use crate::state::{AppContext, TelemetryEntry};
 use time::OffsetDateTime;
 
-const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider documentation server. Use the `query` tool to retrieve official documentation for Apple platforms, Rust, Telegram Bot API, TON blockchain, and Cocoon.
+const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider documentation server. Use the `query` tool to retrieve official documentation for Apple platforms, Rust, Telegram Bot API, TON blockchain, Cocoon, MDN Web Docs, and Web Frameworks (React, Next.js, Node.js).
 
 ## How to Use
 
@@ -20,6 +20,10 @@ const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider docum
 - "Rust tokio spawn async" → Rust crate documentation
 - "Telegram sendMessage" → Bot API method details with parameters
 - "how to use CoreData fetch requests" → Implementation guidance
+- "JavaScript Array map" → MDN Web Docs with examples
+- "React useState hook" → React documentation with usage patterns
+- "Next.js server components" → Next.js App Router documentation
+- "Node.js fs readFile" → Node.js API documentation
 
 ## What You Get
 
@@ -44,7 +48,9 @@ For top results, the tool returns:
 - **Rust**: Standard library (std, core, alloc) and crates (tokio, serde, etc.)
 - **Telegram**: Bot API methods and types
 - **TON**: Blockchain API endpoints
-- **Cocoon**: Confidential computing documentation"#;
+- **Cocoon**: Confidential computing documentation
+- **MDN**: JavaScript, TypeScript, Web APIs, DOM documentation
+- **Web Frameworks**: React, Next.js, Node.js documentation with examples"#;
 
 pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
     let stdin = io::stdin();

@@ -10,6 +10,8 @@ Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that prov
 - **TON**: Blockchain API endpoints
 - **Cocoon**: Confidential computing documentation
 - **Rust**: Standard library (std, core, alloc) and any crate from docs.rs
+- **MDN**: JavaScript, TypeScript, Web APIs, DOM documentation
+- **Web Frameworks**: React, Next.js, and Node.js documentation
 
 ## Build Commands
 
@@ -40,12 +42,14 @@ cargo clippy --all-targets
 │   ├── docs-mcp-client/       # HTTP client for Apple's documentation API
 │   ├── docs-mcp-core/         # Core logic: tools, state, services, transport
 │   ├── docs-mcp/          # MCP protocol bootstrap and config resolution
-│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, and Rust APIs
+│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, and Web Frameworks APIs
 │       ├── src/
 │       │   ├── telegram/        # Telegram Bot API client
 │       │   ├── ton/             # TON blockchain API client
 │       │   ├── cocoon/          # Cocoon confidential computing client
 │       │   ├── rust/            # Rust documentation client (std + docs.rs)
+│       │   ├── mdn/             # MDN Web Docs client (JavaScript, Web APIs)
+│       │   ├── web_frameworks/  # React, Next.js, Node.js documentation client
 │       │   ├── types.rs         # Unified types across all providers
 │       │   └── lib.rs           # ProviderClients aggregation
 ```
@@ -63,6 +67,8 @@ cargo clippy --all-targets
   - `TonClient`: TON blockchain endpoints from `tonapi.io` OpenAPI spec
   - `CocoonClient`: Cocoon documentation from `cocoon.org`
   - `RustClient`: Rust std library + any crate from `docs.rs`
+  - `MdnClient`: JavaScript, TypeScript, Web APIs from `developer.mozilla.org`
+  - `WebFrameworksClient`: React, Next.js, Node.js documentation with example extraction
 
 ### Provider Architecture
 
@@ -75,6 +81,8 @@ pub enum ProviderType {
     TON,
     Cocoon,
     Rust,
+    Mdn,
+    WebFrameworks,
 }
 
 pub struct ProviderClients {
@@ -83,6 +91,8 @@ pub struct ProviderClients {
     pub ton: TonClient,
     pub cocoon: CocoonClient,
     pub rust: RustClient,
+    pub mdn: MdnClient,
+    pub web_frameworks: WebFrameworksClient,
 }
 ```
 
@@ -98,11 +108,11 @@ Each tool dispatches to the appropriate provider based on `active_provider` stat
 
 The `query` tool acts as an intelligent entry point that:
 1. Parses natural language queries to extract intent (how-to, reference, search)
-2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon)
+2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks)
 3. Auto-selects the relevant technology/framework
 4. Executes optimized search across the detected provider
 5. Fetches detailed documentation for top results
-6. Returns structured, AI-ready context
+6. Returns structured, AI-ready context with usage examples
 
 **Legacy tools** (`discover_technologies`, `choose_technology`, `search_symbols`, etc.) remain in the codebase for reference but are not exposed via MCP.
 
@@ -135,6 +145,18 @@ The `query` tool acts as an intelligent entry point that:
 - Search index parsing from rustdoc
 - Module and symbol documentation
 
+#### MDN Web Docs
+- JavaScript core language features (Array, Object, Promise, etc.)
+- Web APIs (DOM, Fetch, WebSocket, Canvas, etc.)
+- TypeScript type documentation
+- Code examples with quality scoring
+
+#### Web Frameworks
+- **React**: Hooks (useState, useEffect, etc.), components, patterns
+- **Next.js**: App Router, Server Components, API routes
+- **Node.js**: Core modules (fs, path, http, crypto, stream)
+- Usage examples prioritized by completeness and runnability
+
 ### Unified Query Tool Features
 
 The `query` tool implements advanced natural language processing:
@@ -158,6 +180,10 @@ Intelligently detects the target provider from query context:
 - **Telegram**: bot, sendmessage, telegram, webhook keywords
 - **TON**: blockchain, wallet, jetton, tonapi keywords
 - **Cocoon**: confidential computing, TDX keywords
+- **MDN**: javascript, js, dom, fetch, promise, array, web, browser keywords
+- **React**: react, jsx, hook, usestate, useeffect, component keywords
+- **Next.js**: nextjs, next, approuter, servercomponent keywords
+- **Node.js**: nodejs, node, fs, path, http, stream keywords
 
 #### Query Type Classification
 Three query types with specialized handling:
@@ -173,6 +199,10 @@ input_examples: Some(vec![
     json!({"query": "Rust tokio async task spawning"}),
     json!({"query": "Telegram Bot API sendMessage parameters"}),
     json!({"query": "CoreData fetch request predicates", "maxResults": 5}),
+    json!({"query": "JavaScript Array map filter"}),
+    json!({"query": "React useState hook"}),
+    json!({"query": "Next.js server components"}),
+    json!({"query": "Node.js fs readFile"}),
 ])
 ```
 
@@ -218,6 +248,10 @@ All providers use two-tier caching:
 | Cocoon docs | 1h | 24h |
 | Rust std index | 24h | 7d |
 | Rust crate metadata | 30min | 24h |
+| MDN search index | 1h | 24h |
+| MDN article content | 30min | 24h |
+| React/Next.js docs | 1h | 24h |
+| Node.js API index | 24h | 7d |
 
 ## Environment Variables
 
@@ -244,6 +278,18 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test how-to query
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"how to use SwiftUI NavigationStack"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with MDN (JavaScript)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"JavaScript Array map"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with React
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"React useState hook"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Next.js
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Next.js server components"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Node.js
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Node.js fs readFile"}},"id":3}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## Adding a New Provider

@@ -44,13 +44,25 @@
   - ✅ **UIKit/AppKit Verification**: Confirmed zero references for UIKit/AppKit is expected behavior (Apple's documentation API structure), not a cache refresh issue. These frameworks use different documentation patterns.
   - ✅ **Build Verification**: Release binary builds successfully in 4.89s. All tests pass in ~2.5s total runtime.
 
-- Phase 6 – Future Enhancements *(Pending)*
+- Phase 6 – Web Documentation Providers *(Completed 2025-12-02 · Owner: Claude Code)*
+  - **MDN Web Docs Provider**: Full integration for JavaScript, TypeScript, Web APIs, and DOM documentation.
+  - **Web Frameworks Provider**: React, Next.js, and Node.js documentation with example extraction and quality scoring.
+  - ✅ **MDN Client Implementation**: Created `MdnClient` with search API integration, HTML parsing for examples, disk caching, and article fetching.
+  - ✅ **Web Frameworks Client Implementation**: Created `WebFrameworksClient` supporting React (hooks, components), Next.js (App Router, Server Components), and Node.js (core modules).
+  - ✅ **Type System Extensions**: Added `ProviderType::Mdn` and `ProviderType::WebFrameworks` to the unified type system. Added `TechnologyKind::MdnCategory` and `TechnologyKind::WebFramework`.
+  - ✅ **Query Tool Integration**: Added comprehensive keyword detection for MDN (javascript, dom, fetch, promise, etc.), React (hook, useState, useEffect, etc.), Next.js (serverComponent, appRouter, etc.), and Node.js (fs, path, http, etc.).
+  - ✅ **Search Functions**: Implemented `search_mdn()` and `search_web_frameworks()` with full documentation fetching and code example extraction.
+  - ✅ **Example Quality Scoring**: Implemented `quality_score()` for code examples based on completeness (imports, exports), descriptions, and length.
+  - ✅ **Documentation Updated**: CLAUDE.md updated with new providers, detection keywords, caching strategy, and test commands.
+
+- Phase 7 – Future Enhancements *(Pending)*
   - **Performance Optimization**: Profile hot paths in search and caching. Consider implementing parallel framework loading for global searches.
   - **Enhanced Metrics**: Add cache hit rate histograms, query latency p99 tracking, and per-framework usage analytics.
   - **Intelligent Caching**: Implement TTL-based cache invalidation for frequently updated frameworks. Consider predictive pre-fetching based on usage patterns.
   - **Advanced Search Features**: Fuzzy matching improvements, platform-specific filtering (iOS vs macOS), and semantic similarity ranking.
   - **Recipe Expansion**: Add more curated recipes for UIKit, AppKit, Core Data, and Combine. Implement dynamic recipe generation from documentation patterns.
   - **MCP Protocol Enhancements**: Explore streaming responses for large result sets, progressive loading indicators, and cancellation support.
+  - **Web Framework Enhancements**: Add Vue.js, Angular, Svelte, and Deno documentation providers. Implement live documentation fetching from react.dev and nextjs.org.
 
 ## Code Quality Notes (2025-11-29)
 - **Strengths**: Excellent test coverage, proper use of Rust atomics for thread-safe cache stats, clean separation of concerns across crates.

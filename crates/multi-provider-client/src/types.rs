@@ -3,9 +3,13 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::cocoon::types::{CocoonDocument, CocoonSection, CocoonTechnology};
+use crate::mdn::types::{MdnArticle, MdnCategory, MdnTechnology};
 use crate::rust::types::{RustCategory, RustItem, RustTechnology};
 use crate::telegram::types::{TelegramCategory, TelegramItem, TelegramTechnology};
 use crate::ton::types::{TonCategory, TonEndpoint, TonTechnology};
+use crate::web_frameworks::types::{
+    CodeExample, WebFramework, WebFrameworkArticle, WebFrameworkTechnology,
+};
 
 /// Provider type enum for identifying documentation sources
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -16,6 +20,8 @@ pub enum ProviderType {
     TON,
     Cocoon,
     Rust,
+    Mdn,
+    WebFrameworks,
 }
 
 impl ProviderType {
@@ -27,6 +33,8 @@ impl ProviderType {
             Self::TON => "TON",
             Self::Cocoon => "Cocoon",
             Self::Rust => "Rust",
+            Self::Mdn => "MDN",
+            Self::WebFrameworks => "Web Frameworks",
         }
     }
 
@@ -38,6 +46,8 @@ impl ProviderType {
             Self::TON => "TON Blockchain API Documentation",
             Self::Cocoon => "Cocoon Verifiable AI Documentation",
             Self::Rust => "Rust Language and Crate Documentation",
+            Self::Mdn => "MDN Web Documentation (JavaScript, Web APIs, CSS)",
+            Self::WebFrameworks => "React, Next.js, and Node.js Documentation",
         }
     }
 }
@@ -71,6 +81,10 @@ pub enum TechnologyKind {
     DocSection,
     /// Rust crate (std, serde, tokio, etc.)
     RustCrate,
+    /// MDN category (JavaScript, Web API, CSS, HTML)
+    MdnCategory,
+    /// Web framework (React, Next.js, Node.js)
+    WebFramework,
 }
 
 impl UnifiedTechnology {
@@ -133,6 +147,28 @@ impl UnifiedTechnology {
             description: tech.description,
             url: Some(tech.url),
             kind: TechnologyKind::RustCrate,
+        }
+    }
+
+    pub fn from_mdn(tech: MdnTechnology) -> Self {
+        Self {
+            provider: ProviderType::Mdn,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::MdnCategory,
+        }
+    }
+
+    pub fn from_web_framework(tech: WebFrameworkTechnology) -> Self {
+        Self {
+            provider: ProviderType::WebFrameworks,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::WebFramework,
         }
     }
 }
@@ -342,6 +378,45 @@ pub enum SymbolContent {
         documentation: String,
         source_url: Option<String>,
     },
+    /// MDN article content
+    Mdn {
+        category: String,
+        syntax: Option<String>,
+        parameters: Vec<MdnParamInfo>,
+        return_value: Option<String>,
+        browser_compat: Option<String>,
+        examples: Vec<MdnExampleInfo>,
+    },
+    /// Web framework documentation
+    WebFramework {
+        framework: String,
+        api_signature: Option<String>,
+        examples: Vec<WebFrameworkExampleInfo>,
+        content: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MdnParamInfo {
+    pub name: String,
+    pub description: String,
+    pub param_type: Option<String>,
+    pub optional: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MdnExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebFrameworkExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub filename: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -491,6 +566,82 @@ impl UnifiedSymbolData {
                 source_url: data.source_url,
             },
             related: vec![],
+        }
+    }
+
+    pub fn from_mdn(data: MdnArticle) -> Self {
+        let parameters = data
+            .parameters
+            .into_iter()
+            .map(|p| MdnParamInfo {
+                name: p.name,
+                description: p.description,
+                param_type: p.param_type,
+                optional: p.optional,
+            })
+            .collect();
+
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| MdnExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Mdn,
+            title: data.title,
+            description: data.summary,
+            kind: Some(data.category.to_string()),
+            content: SymbolContent::Mdn {
+                category: data.category.to_string(),
+                syntax: data.syntax,
+                parameters,
+                return_value: data.return_value,
+                browser_compat: data.browser_compat,
+                examples,
+            },
+            related: vec![],
+        }
+    }
+
+    pub fn from_web_framework(data: WebFrameworkArticle) -> Self {
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| WebFrameworkExampleInfo {
+                code: e.code,
+                language: e.language,
+                filename: e.filename,
+                description: e.description,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::WebFrameworks,
+            title: data.title,
+            description: data.description,
+            kind: Some(data.framework.to_string()),
+            content: SymbolContent::WebFramework {
+                framework: data.framework.to_string(),
+                api_signature: data.api_signature,
+                examples,
+                content: data.content,
+            },
+            related: data
+                .related
+                .into_iter()
+                .map(|r| UnifiedReference {
+                    identifier: r.clone(),
+                    title: r,
+                    description: None,
+                    kind: None,
+                    url: None,
+                })
+                .collect(),
         }
     }
 }

@@ -379,6 +379,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             TechnologyKind::BlockchainApi => " [Blockchain]",
             TechnologyKind::DocSection => " [Docs]",
             TechnologyKind::RustCrate => " [Crate]",
+            TechnologyKind::MdnCategory => " [Web]",
+            TechnologyKind::WebFramework => " [Framework]",
         };
         title_line.push_str(kind_badge);
 
@@ -437,6 +439,8 @@ fn provider_display_name(provider: &ProviderType) -> &'static str {
         ProviderType::TON => "💎 TON Blockchain",
         ProviderType::Cocoon => "🥥 Cocoon",
         ProviderType::Rust => "🦀 Rust",
+        ProviderType::Mdn => "📚 MDN Web Docs",
+        ProviderType::WebFrameworks => "⚛️ Web Frameworks",
     }
 }
 
@@ -448,6 +452,8 @@ fn provider_sort_order(provider: &ProviderType) -> u8 {
         ProviderType::TON => 2,
         ProviderType::Cocoon => 3,
         ProviderType::Rust => 4,
+        ProviderType::Mdn => 5,
+        ProviderType::WebFrameworks => 6,
     }
 }
 
@@ -470,6 +476,8 @@ fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>)
             TechnologyKind::DocSection => 30,
             TechnologyKind::Framework => 50,
             TechnologyKind::RustCrate => 45,
+            TechnologyKind::MdnCategory => 48,
+            TechnologyKind::WebFramework => 47,
         }
     };
 

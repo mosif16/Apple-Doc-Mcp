@@ -146,6 +146,60 @@ static TON_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
+/// MDN Web Docs keywords (JavaScript, Web APIs, TypeScript)
+static MDN_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        "javascript", "js", "ecmascript", "typescript", "ts", "dom", "fetch",
+        "promise", "async", "await", "array", "object", "function", "class",
+        "map", "set", "weakmap", "weakset", "proxy", "reflect", "symbol",
+        "iterator", "generator", "module", "import", "export", "json",
+        "localstorage", "sessionstorage", "indexeddb", "webworker", "serviceworker",
+        "websocket", "xmlhttprequest", "formdata", "url", "urlsearchparams",
+        "blob", "file", "filereader", "canvas", "webgl", "audio", "video",
+        "geolocation", "notification", "clipboard", "intersectionobserver",
+        "mutationobserver", "resizeobserver", "customelement", "shadowdom",
+        "template", "slot", "eventlistener", "addeventlistener", "queryselector",
+        "mdn", "web", "browser", "html", "css",
+    ]
+});
+
+/// React keywords
+static REACT_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        "react", "jsx", "tsx", "hook", "usestate", "useeffect", "usecontext",
+        "usereducer", "usecallback", "usememo", "useref", "uselayouteffect",
+        "useimperativehandle", "usedebugvalue", "usetransition", "usedeferredvalue",
+        "useid", "usesyncexternalstore", "useinsertioneffect", "component",
+        "props", "children", "fragment", "suspense", "lazy", "memo", "forwardref",
+        "createcontext", "createref", "strictmode", "profiler", "reactdom",
+        "createroot", "hydrateroot", "flushsync", "createportal",
+    ]
+});
+
+/// Next.js keywords
+static NEXTJS_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        "nextjs", "next", "approuter", "pagesrouter", "servercomponent",
+        "clientcomponent", "serveraction", "getserversideprops", "getstaticprops",
+        "getstaticpaths", "incrementalstaticregeneration", "isr", "middleware",
+        "nextimage", "nextlink", "nextscript", "nexthead", "userouter",
+        "usepathname", "usesearchparams", "useparams", "notfound", "redirect",
+        "generatemetadata", "generatestaticparams", "routehandler", "apiRoute",
+        "layout", "page", "loading", "error", "notfound", "template",
+    ]
+});
+
+/// Node.js keywords
+static NODEJS_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        "nodejs", "node", "fs", "path", "http", "https", "crypto", "stream",
+        "buffer", "events", "util", "os", "child_process", "cluster", "worker_threads",
+        "readline", "repl", "net", "dgram", "dns", "tls", "zlib", "assert",
+        "querystring", "string_decoder", "timers", "tty", "v8", "vm", "process",
+        "console", "require", "module", "exports", "global", "dirname", "filename",
+    ]
+});
+
 /// How-to query patterns
 static HOWTO_PATTERNS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(how\s+(do\s+i|to|can\s+i)|what'?s?\s+the\s+(best\s+)?way\s+to|implement|create|make|build|add|show\s+me\s+how)").unwrap()
@@ -302,6 +356,34 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
         return (Some(ProviderType::Cocoon), Some("cocoon:architecture".to_string()));
     }
 
+    // Check for React keywords (before general MDN keywords since React uses JS)
+    for keyword in REACT_KEYWORDS.iter() {
+        if contains_word(query, keyword) {
+            return (Some(ProviderType::WebFrameworks), Some("webfw:react".to_string()));
+        }
+    }
+
+    // Check for Next.js keywords
+    for keyword in NEXTJS_KEYWORDS.iter() {
+        if contains_word(query, keyword) {
+            return (Some(ProviderType::WebFrameworks), Some("webfw:nextjs".to_string()));
+        }
+    }
+
+    // Check for Node.js keywords
+    for keyword in NODEJS_KEYWORDS.iter() {
+        if contains_word(query, keyword) {
+            return (Some(ProviderType::WebFrameworks), Some("webfw:nodejs".to_string()));
+        }
+    }
+
+    // Check for MDN/JavaScript keywords
+    for keyword in MDN_KEYWORDS.iter() {
+        if contains_word(query, keyword) {
+            return (Some(ProviderType::Mdn), Some("mdn:javascript".to_string()));
+        }
+    }
+
     // Default: no specific provider detected, will use current active
     (None, None)
 }
@@ -420,6 +502,45 @@ async fn resolve_technology(
                 };
                 *context.state.active_unified_technology.write().await = Some(unified);
                 Ok((*provider, "Cocoon".to_string()))
+            }
+            ProviderType::Mdn => {
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: "MDN Web Docs".to_string(),
+                    description: "JavaScript, Web APIs, and TypeScript documentation".to_string(),
+                    provider: ProviderType::Mdn,
+                    url: Some("https://developer.mozilla.org".to_string()),
+                    kind: multi_provider_client::types::TechnologyKind::MdnCategory,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, "MDN Web Docs".to_string()))
+            }
+            ProviderType::WebFrameworks => {
+                // Parse framework from tech_id (e.g., "webfw:react" -> "React")
+                let framework_name = tech_id
+                    .strip_prefix("webfw:")
+                    .map(|f| match f {
+                        "react" => "React",
+                        "nextjs" => "Next.js",
+                        "nodejs" => "Node.js",
+                        _ => "React",
+                    })
+                    .unwrap_or("React");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: framework_name.to_string(),
+                    description: format!("{} documentation", framework_name),
+                    provider: ProviderType::WebFrameworks,
+                    url: Some(match framework_name {
+                        "React" => "https://react.dev".to_string(),
+                        "Next.js" => "https://nextjs.org/docs".to_string(),
+                        "Node.js" => "https://nodejs.org/api".to_string(),
+                        _ => "https://react.dev".to_string(),
+                    }),
+                    kind: multi_provider_client::types::TechnologyKind::WebFramework,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, framework_name.to_string()))
             }
         }
     } else {
@@ -557,6 +678,8 @@ async fn execute_search_query(
         ProviderType::Telegram => search_telegram(context, &search_query, max_results).await,
         ProviderType::TON => search_ton(context, &search_query, max_results).await,
         ProviderType::Cocoon => search_cocoon(context, &search_query, max_results).await,
+        ProviderType::Mdn => search_mdn(context, &search_query, max_results).await,
+        ProviderType::WebFrameworks => search_web_frameworks(context, intent, &search_query, max_results).await,
     }
 }
 
@@ -990,6 +1113,139 @@ async fn search_cocoon(
             summary: doc.summary,
             platforms: Some("Cocoon".to_string()),
             code_sample: None,
+            related_apis: Vec::new(),
+            full_content,
+            declaration: None,
+            parameters: Vec::new(),
+        });
+    }
+
+    Ok(results)
+}
+
+/// Search MDN Web Docs
+async fn search_mdn(
+    context: &Arc<AppContext>,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    let items = match context.providers.mdn.search(query).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "MDN search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full article for top results
+        let (full_content, code_sample, parameters) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.mdn.get_article(&item.slug).await {
+                Ok(article) => {
+                    let code = article.examples.first().map(|e| e.code.clone());
+                    let params: Vec<(String, String)> = article
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.description.clone()))
+                        .collect();
+                    let content = if !article.summary.is_empty() {
+                        Some(article.summary.clone())
+                    } else {
+                        None
+                    };
+                    (content, code, params)
+                }
+                Err(_) => (None, None, Vec::new()),
+            }
+        } else {
+            (None, None, Vec::new())
+        };
+
+        results.push(DocResult {
+            title: item.title.clone(),
+            kind: "Article".to_string(),
+            path: item.slug.clone(),
+            summary: item.summary.clone(),
+            platforms: Some("MDN Web Docs".to_string()),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration: None,
+            parameters,
+        });
+    }
+
+    Ok(results)
+}
+
+/// Search Web Frameworks documentation (React, Next.js, Node.js)
+async fn search_web_frameworks(
+    context: &Arc<AppContext>,
+    intent: &QueryIntent,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    use multi_provider_client::web_frameworks::types::WebFramework;
+
+    // Determine which framework to search based on the technology identifier
+    let framework = intent
+        .technology
+        .as_ref()
+        .and_then(|t| t.strip_prefix("webfw:"))
+        .map(|f| match f {
+            "react" => WebFramework::React,
+            "nextjs" => WebFramework::NextJs,
+            "nodejs" => WebFramework::NodeJs,
+            _ => WebFramework::React,
+        })
+        .unwrap_or(WebFramework::React);
+
+    let items = match context.providers.web_frameworks.search(framework, query).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "Web Frameworks search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let framework_name = match framework {
+        WebFramework::React => "React",
+        WebFramework::NextJs => "Next.js",
+        WebFramework::NodeJs => "Node.js",
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full article for top results
+        let (full_content, code_sample) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.web_frameworks.get_article(framework, &item.slug).await {
+                Ok(article) => {
+                    let code = article
+                        .examples
+                        .iter()
+                        .max_by_key(|e| e.quality_score())
+                        .map(|e| e.code.clone());
+                    let content = if !article.content.is_empty() {
+                        Some(trim_text(&article.content, MAX_CONTENT_LENGTH))
+                    } else {
+                        None
+                    };
+                    (content, code)
+                }
+                Err(_) => (None, None),
+            }
+        } else {
+            (None, None)
+        };
+
+        results.push(DocResult {
+            title: item.title.clone(),
+            kind: item.category.clone().unwrap_or_else(|| "Article".to_string()),
+            path: item.slug.clone(),
+            summary: item.description.clone(),
+            platforms: Some(framework_name.to_string()),
+            code_sample,
             related_apis: Vec::new(),
             full_content,
             declaration: None,

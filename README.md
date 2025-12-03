@@ -7,10 +7,12 @@ A Model Context Protocol (MCP) server written in Rust that provides seamless acc
 | Provider | Description | Technologies |
 |----------|-------------|--------------|
 | **Apple** | iOS/macOS development | SwiftUI, UIKit, Foundation, and 50+ frameworks |
+| **Rust** | Rust documentation | std, core, alloc + any crate from docs.rs |
 | **Telegram** | Bot API documentation | Methods, types, and parameters |
 | **TON** | Blockchain API | REST endpoints and schemas |
 | **Cocoon** | Confidential computing | Architecture and smart contracts |
-| **Rust** | Rust documentation | std, core, alloc + any crate from docs.rs |
+| **MDN** | Web development | JavaScript, TypeScript, Web APIs, DOM |
+| **Web Frameworks** | Frontend/Backend | React, Next.js, Node.js |
 
 ## Quick Start
 
@@ -38,145 +40,140 @@ For local development:
 cargo run -p docs-mcp-cli
 ```
 
-## Typical Workflow
+## Usage
 
-### 1. Discover Available Technologies
+The server exposes a single unified `query` tool that automatically detects the appropriate provider and returns comprehensive documentation.
 
-```
-discover_technologies { "provider": "all" }
-discover_technologies { "provider": "apple", "query": "swift" }
-discover_technologies { "provider": "rust" }
-discover_technologies { "provider": "telegram" }
-```
+### Natural Language Queries
 
-### 2. Select a Technology
+Simply describe what you're looking for:
 
 ```
-choose_technology { "identifier": "doc://com.apple.documentation/documentation/swiftui", "name": "SwiftUI" }
-choose_technology { "identifier": "rust:std", "name": "Rust std Library" }
-choose_technology { "identifier": "telegram:methods", "name": "Telegram Bot API Methods" }
+query { "query": "SwiftUI NavigationStack" }
+query { "query": "Rust tokio spawn async" }
+query { "query": "Telegram sendMessage parameters" }
+query { "query": "JavaScript Array map filter" }
+query { "query": "React useState hook" }
+query { "query": "Next.js server components" }
+query { "query": "Node.js fs readFile" }
 ```
 
-### 3. Search Within the Active Technology
+### How-To Queries
+
+Ask implementation questions:
 
 ```
-search_symbols { "query": "button" }
-search_symbols { "query": "HashMap", "maxResults": 10 }
-search_symbols { "query": "sendMessage" }
+query { "query": "how to use SwiftUI NavigationStack" }
+query { "query": "how to implement tab navigation in SwiftUI" }
 ```
 
-### 4. Get Documentation
+### Provider Auto-Detection
 
-```
-get_documentation { "path": "Button" }
-get_documentation { "path": "std::collections::HashMap" }
-get_documentation { "path": "sendMessage" }
-```
+The query tool automatically routes to the correct provider based on keywords:
 
-### 5. Ask for Guided Recipes (Apple only)
+- **Apple**: SwiftUI, UIKit, iOS, macOS, Foundation, CoreData, etc.
+- **Rust**: std, tokio, serde, HashMap, Vec, async, etc.
+- **Telegram**: bot, sendMessage, getUpdates, webhook, etc.
+- **TON**: blockchain, wallet, jetton, tonapi, etc.
+- **Cocoon**: confidential computing, TDX, attestation, etc.
+- **MDN**: JavaScript, JS, DOM, fetch, promise, array, etc.
+- **React**: hook, useState, useEffect, component, JSX, etc.
+- **Next.js**: nextjs, App Router, server component, etc.
+- **Node.js**: nodejs, fs, path, http, stream, etc.
 
-```
-how_do_i { "task": "add search suggestions" }
-how_do_i { "task": "implement tab navigation" }
-```
+## What You Get
 
-## Available Tools
+For each query, the tool returns:
 
-| Tool | Description |
-|------|-------------|
-| `discover_technologies` | Browse/filter frameworks from all providers |
-| `choose_technology` | Set the active framework for subsequent searches |
-| `current_technology` | Show current selection and quick next steps |
-| `search_symbols` | Fuzzy keyword search within the active framework |
-| `get_documentation` | View symbol/API documentation |
-| `how_do_i` | Fetch guided multi-step recipes (Apple) |
-| `batch_documentation` | Fetch docs for multiple symbols in one call |
+- **Full documentation content** (not truncated summaries)
+- **Code examples** ready to use
+- **Declarations/signatures** for API reference
+- **Parameters** with descriptions
+- **Platform availability** information
+- **Related APIs** for further exploration
 
 ## Provider-Specific Examples
 
 ### Apple (SwiftUI, UIKit, etc.)
 
 ```
-discover_technologies { "provider": "apple", "category": "ui" }
-choose_technology { "identifier": "doc://com.apple.documentation/documentation/swiftui" }
-search_symbols { "query": "NavigationStack" }
-get_documentation { "path": "TabView" }
+query { "query": "SwiftUI Button styling" }
+query { "query": "UIKit TableView delegate" }
+query { "query": "CoreData fetch request" }
 ```
 
 ### Rust
 
 ```
-discover_technologies { "provider": "rust" }
-choose_technology { "identifier": "rust:std", "name": "Rust std Library" }
-search_symbols { "query": "HashMap" }
-get_documentation { "path": "Vec" }
-```
-
-You can also load any crate from docs.rs dynamically:
-
-```
-choose_technology { "identifier": "rust:serde", "name": "serde" }
-choose_technology { "identifier": "rust:tokio", "name": "tokio" }
+query { "query": "Rust HashMap insert" }
+query { "query": "tokio spawn async task" }
+query { "query": "serde serialize struct" }
 ```
 
 ### Telegram Bot API
 
 ```
-discover_technologies { "provider": "telegram" }
-choose_technology { "identifier": "telegram:methods" }
-search_symbols { "query": "send" }
-get_documentation { "path": "sendMessage" }
+query { "query": "telegram sendMessage" }
+query { "query": "telegram bot webhook" }
+query { "query": "telegram inline keyboard" }
 ```
 
 ### TON Blockchain
 
 ```
-discover_technologies { "provider": "ton" }
-choose_technology { "identifier": "ton:accounts" }
-search_symbols { "query": "account" }
-get_documentation { "path": "getAccountInfo" }
+query { "query": "TON wallet address" }
+query { "query": "TON jetton transfer" }
 ```
 
 ### Cocoon
 
 ```
-discover_technologies { "provider": "cocoon" }
-choose_technology { "identifier": "cocoon:architecture" }
-search_symbols { "query": "tdx" }
+query { "query": "Cocoon TDX attestation" }
+query { "query": "Cocoon confidential computing" }
+```
+
+### MDN Web Docs
+
+```
+query { "query": "JavaScript Array map" }
+query { "query": "fetch API POST request" }
+query { "query": "Promise async await" }
+query { "query": "DOM querySelector" }
+```
+
+### React
+
+```
+query { "query": "React useState hook" }
+query { "query": "React useEffect cleanup" }
+query { "query": "React useContext provider" }
+query { "query": "React memo performance" }
+```
+
+### Next.js
+
+```
+query { "query": "Next.js server components" }
+query { "query": "Next.js App Router layout" }
+query { "query": "Next.js API routes" }
+query { "query": "Next.js middleware" }
+```
+
+### Node.js
+
+```
+query { "query": "Node.js fs readFile" }
+query { "query": "Node.js http server" }
+query { "query": "Node.js path join" }
+query { "query": "Node.js stream pipe" }
 ```
 
 ## Search Tips
 
-- Start broad (e.g., `"button"`, `"animation"`, `"hash"`)
-- Try synonyms (`"sheet"` vs `"modal"`, `"map"` vs `"hashmap"`)
-- Use multiple keywords (`"tab view layout"`) to narrow results
-- Use `"scope": "global"` to search across all cached frameworks
-- If nothing turns up, try `discover_technologies` with a different provider
-
-## Enriched Output
-
-### Apple Provider
-- Quick summaries with inline Swift snippets
-- Platform availability badges (iOS, macOS, watchOS, tvOS)
-- Human Interface Guidelines (HIG) integration
-- SwiftUI/UIKit/AppKit bridge hints
-- Related APIs from knowledge base
-
-### Rust Provider
-- Module paths (e.g., `std::collections::HashMap`)
-- Item kinds (Struct, Enum, Trait, Function, etc.)
-- Links to docs.rs documentation
-- Crate version information
-
-### Telegram Provider
-- Method parameters with required/optional flags
-- Return type information
-- Field documentation for types
-
-### TON Provider
-- HTTP method and path
-- Parameter locations (path, query, body)
-- Response schema information
+- Use natural language queries for best results
+- Include the technology name for precise matching (e.g., "SwiftUI Button" not just "Button")
+- Try how-to queries for implementation guidance
+- Use `maxResults` parameter to control result count
 
 ## Environment Variables
 
@@ -194,7 +191,13 @@ search_symbols { "query": "tdx" }
 │   ├── docs-mcp-client/         # Apple documentation API client
 │   ├── docs-mcp-core/           # MCP tools, state, services
 │   ├── docs-mcp/                # MCP protocol bootstrap
-│   └── multi-provider-client/   # Telegram, TON, Cocoon, Rust clients
+│   └── multi-provider-client/   # All provider clients
+│       ├── telegram/            # Telegram Bot API
+│       ├── ton/                 # TON Blockchain
+│       ├── cocoon/              # Cocoon confidential computing
+│       ├── rust/                # Rust std + docs.rs
+│       ├── mdn/                 # MDN Web Docs
+│       └── web_frameworks/      # React, Next.js, Node.js
 ```
 
 ## Development
@@ -209,8 +212,8 @@ cargo test
 # Lint
 cargo clippy --all-targets
 
-# Test MCP handshake
-printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n' | ./target/release/docs-mcp-cli
+# Test MCP handshake and query tool
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"SwiftUI Button"}},"id":2}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## License
