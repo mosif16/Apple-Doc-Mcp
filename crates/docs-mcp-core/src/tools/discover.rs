@@ -381,6 +381,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             TechnologyKind::RustCrate => " [Crate]",
             TechnologyKind::MdnCategory => " [Web]",
             TechnologyKind::WebFramework => " [Framework]",
+            TechnologyKind::MlxFramework => " [ML]",
+            TechnologyKind::HfLibrary => " [AI]",
         };
         title_line.push_str(kind_badge);
 
@@ -441,6 +443,8 @@ fn provider_display_name(provider: &ProviderType) -> &'static str {
         ProviderType::Rust => "🦀 Rust",
         ProviderType::Mdn => "📚 MDN Web Docs",
         ProviderType::WebFrameworks => "⚛️ Web Frameworks",
+        ProviderType::Mlx => "🧠 MLX",
+        ProviderType::HuggingFace => "🤗 Hugging Face",
     }
 }
 
@@ -454,6 +458,8 @@ fn provider_sort_order(provider: &ProviderType) -> u8 {
         ProviderType::Rust => 4,
         ProviderType::Mdn => 5,
         ProviderType::WebFrameworks => 6,
+        ProviderType::Mlx => 7,
+        ProviderType::HuggingFace => 8,
     }
 }
 
@@ -478,6 +484,8 @@ fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>)
             TechnologyKind::RustCrate => 45,
             TechnologyKind::MdnCategory => 48,
             TechnologyKind::WebFramework => 47,
+            TechnologyKind::MlxFramework => 46,
+            TechnologyKind::HfLibrary => 44,
         }
     };
 

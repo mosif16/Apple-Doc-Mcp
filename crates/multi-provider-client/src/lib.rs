@@ -1,5 +1,7 @@
 pub mod cocoon;
+pub mod huggingface;
 pub mod mdn;
+pub mod mlx;
 pub mod rust;
 pub mod telegram;
 pub mod ton;
@@ -12,7 +14,9 @@ use anyhow::Result;
 use docs_mcp_client::AppleDocsClient;
 
 use cocoon::CocoonClient;
+use huggingface::HuggingFaceClient;
 use mdn::MdnClient;
+use mlx::MlxClient;
 use rust::RustClient;
 use telegram::TelegramClient;
 use ton::TonClient;
@@ -29,6 +33,8 @@ pub struct ProviderClients {
     pub rust: RustClient,
     pub mdn: MdnClient,
     pub web_frameworks: WebFrameworksClient,
+    pub mlx: MlxClient,
+    pub huggingface: HuggingFaceClient,
 }
 
 impl Default for ProviderClients {
@@ -48,6 +54,8 @@ impl ProviderClients {
             rust: RustClient::new(),
             mdn: MdnClient::new(),
             web_frameworks: WebFrameworksClient::new(),
+            mlx: MlxClient::new(),
+            huggingface: HuggingFaceClient::new(),
         }
     }
 
@@ -55,14 +63,16 @@ impl ProviderClients {
     pub async fn get_all_technologies(
         &self,
     ) -> Result<HashMap<ProviderType, Vec<UnifiedTechnology>>> {
-        let (apple, telegram, ton, cocoon, rust, mdn, webfw) = tokio::join!(
+        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf) = tokio::join!(
             self.apple.get_technologies(),
             self.telegram.get_technologies(),
             self.ton.get_technologies(),
             self.cocoon.get_technologies(),
             self.rust.get_technologies(),
             self.mdn.get_technologies(),
-            self.web_frameworks.get_technologies()
+            self.web_frameworks.get_technologies(),
+            self.mlx.get_technologies(),
+            self.huggingface.get_technologies()
         );
 
         let mut result = HashMap::new();
@@ -119,6 +129,20 @@ impl ProviderClients {
             );
         }
 
+        if let Ok(techs) = mlx {
+            result.insert(
+                ProviderType::Mlx,
+                techs.into_iter().map(UnifiedTechnology::from_mlx).collect(),
+            );
+        }
+
+        if let Ok(techs) = hf {
+            result.insert(
+                ProviderType::HuggingFace,
+                techs.into_iter().map(UnifiedTechnology::from_huggingface).collect(),
+            );
+        }
+
         Ok(result)
     }
 
@@ -159,6 +183,14 @@ impl ProviderClients {
                 let techs = self.web_frameworks.get_technologies().await?;
                 Ok(techs.into_iter().map(UnifiedTechnology::from_web_framework).collect())
             }
+            ProviderType::Mlx => {
+                let techs = self.mlx.get_technologies().await?;
+                Ok(techs.into_iter().map(UnifiedTechnology::from_mlx).collect())
+            }
+            ProviderType::HuggingFace => {
+                let techs = self.huggingface.get_technologies().await?;
+                Ok(techs.into_iter().map(UnifiedTechnology::from_huggingface).collect())
+            }
         }
     }
 
@@ -196,6 +228,14 @@ impl ProviderClients {
                     "Provider {} does not support framework/category browsing. Use get_symbol for article access.",
                     provider.name()
                 )
+            }
+            ProviderType::Mlx => {
+                let data = self.mlx.get_category(identifier).await?;
+                Ok(UnifiedFrameworkData::from_mlx(data))
+            }
+            ProviderType::HuggingFace => {
+                let data = self.huggingface.get_category(identifier).await?;
+                Ok(UnifiedFrameworkData::from_huggingface(data))
             }
         }
     }
@@ -239,6 +279,30 @@ impl ProviderClients {
                 let slug = parts.get(1).unwrap_or(&path);
                 let data = self.web_frameworks.get_article(framework, slug).await?;
                 Ok(UnifiedSymbolData::from_web_framework(data))
+            }
+            ProviderType::Mlx => {
+                // Parse the path to determine language (e.g., "swift/MLXArray" or "python/mlx.core.array")
+                let parts: Vec<&str> = path.splitn(2, '/').collect();
+                let language = if parts[0].to_lowercase().contains("python") {
+                    mlx::types::MlxLanguage::Python
+                } else {
+                    mlx::types::MlxLanguage::Swift
+                };
+                let slug = parts.get(1).unwrap_or(&path);
+                let data = self.mlx.get_article(slug, language).await?;
+                Ok(UnifiedSymbolData::from_mlx(data))
+            }
+            ProviderType::HuggingFace => {
+                // Parse the path to determine technology (e.g., "transformers/AutoModel" or "swift-transformers/Hub")
+                let parts: Vec<&str> = path.splitn(2, '/').collect();
+                let technology = if parts[0].to_lowercase().contains("swift") {
+                    huggingface::types::HfTechnologyKind::SwiftTransformers
+                } else {
+                    huggingface::types::HfTechnologyKind::Transformers
+                };
+                let slug = parts.get(1).unwrap_or(&path);
+                let data = self.huggingface.get_article(slug, technology).await?;
+                Ok(UnifiedSymbolData::from_huggingface(data))
             }
         }
     }

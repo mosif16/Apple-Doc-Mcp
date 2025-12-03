@@ -118,6 +118,18 @@ static APPLE_FRAMEWORKS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| 
         ("charts", "doc://com.apple.documentation/documentation/charts"),
         ("observation", "doc://com.apple.documentation/documentation/observation"),
         ("swiftdata", "doc://com.apple.documentation/documentation/swiftdata"),
+        // ML/AI frameworks
+        ("coreml", "doc://com.apple.documentation/documentation/coreml"),
+        ("createml", "doc://com.apple.documentation/documentation/createml"),
+        ("vision", "doc://com.apple.documentation/documentation/vision"),
+        ("naturallanguage", "doc://com.apple.documentation/documentation/naturallanguage"),
+        ("speech", "doc://com.apple.documentation/documentation/speech"),
+        ("soundanalysis", "doc://com.apple.documentation/documentation/soundanalysis"),
+        ("visionkit", "doc://com.apple.documentation/documentation/visionkit"),
+        ("accelerate", "doc://com.apple.documentation/documentation/accelerate"),
+        ("mlcompute", "doc://com.apple.documentation/documentation/mlcompute"),
+        ("metalperformanceshaders", "doc://com.apple.documentation/documentation/metalperformanceshaders"),
+        ("metalperformanceshadersgraph", "doc://com.apple.documentation/documentation/metalperformanceshadersgraph"),
     ]
 });
 
@@ -197,6 +209,40 @@ static NODEJS_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
         "readline", "repl", "net", "dgram", "dns", "tls", "zlib", "assert",
         "querystring", "string_decoder", "timers", "tty", "v8", "vm", "process",
         "console", "require", "module", "exports", "global", "dirname", "filename",
+    ]
+});
+
+/// MLX (Apple Silicon ML) keywords
+static MLX_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        "mlx", "mlxarray", "mlxswift", "mlx-swift", "apple silicon", "unified memory",
+        "mlxnn", "mlx.nn", "mlx.core", "mlx.optimizers", "mlx_lm",
+        // Core operations
+        "matmul", "conv2d", "softmax", "relu", "gelu", "layernorm", "rmsnorm",
+        // Optimizers
+        "adamw",
+        // Compilation
+        "jit", "compile", "eval", "valueandgrad",
+        // LLM specific
+        "kvcache", "rope", "rotary",
+    ]
+});
+
+/// Hugging Face keywords
+static HUGGINGFACE_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        "huggingface", "hugging face", "hf", "transformers", "automodel", "autotokenizer",
+        "pipeline", "trainer", "from_pretrained", "push_to_hub",
+        // Model families
+        "llama", "mistral", "gemma", "phi", "qwen", "falcon", "codellama", "starcoder",
+        "bert", "gpt2", "t5", "whisper", "clip", "stable diffusion",
+        // Swift transformers
+        "swift-transformers", "swifttransformers",
+        // Libraries
+        "tokenizers", "datasets", "diffusers", "peft", "accelerate", "trl",
+        // Tasks
+        "text-generation", "text-classification", "token-classification", "question-answering",
+        "summarization", "translation", "conversational", "fill-mask",
     ]
 });
 
@@ -330,6 +376,21 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
         );
     }
 
+    // Check for ML/AI-related keywords that imply Apple CoreML
+    if query.contains("machine learning") || query.contains("neural network")
+        || query.contains("ml model") || query.contains("model inference")
+        || query.contains("bnns") || query.contains("image classification")
+        || query.contains("object detection") || query.contains("text recognition")
+        || query.contains("face detection") || query.contains("pose estimation")
+        || query.contains("sentiment analysis") || query.contains("language model")
+    {
+        // Default to CoreML for general ML queries
+        return (
+            Some(ProviderType::Apple),
+            Some("doc://com.apple.documentation/documentation/coreml".to_string()),
+        );
+    }
+
     // Check for Rust crates
     for crate_name in RUST_CRATES.iter() {
         if contains_word(query, crate_name) {
@@ -374,6 +435,32 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
     for keyword in NODEJS_KEYWORDS.iter() {
         if contains_word(query, keyword) {
             return (Some(ProviderType::WebFrameworks), Some("webfw:nodejs".to_string()));
+        }
+    }
+
+    // Check for MLX keywords (Apple Silicon ML)
+    for keyword in MLX_KEYWORDS.iter() {
+        if contains_word(query, keyword) || query.contains(keyword) {
+            // Determine if Swift or Python based on context
+            let tech = if query.contains("swift") || query.contains("ios") || query.contains("macos") {
+                "mlx:swift"
+            } else {
+                "mlx:python"
+            };
+            return (Some(ProviderType::Mlx), Some(tech.to_string()));
+        }
+    }
+
+    // Check for Hugging Face keywords
+    for keyword in HUGGINGFACE_KEYWORDS.iter() {
+        if contains_word(query, keyword) || query.contains(keyword) {
+            // Determine if Swift Transformers or Python Transformers
+            let tech = if query.contains("swift") {
+                "hf:swift-transformers"
+            } else {
+                "hf:transformers"
+            };
+            return (Some(ProviderType::HuggingFace), Some(tech.to_string()));
         }
     }
 
@@ -542,6 +629,49 @@ async fn resolve_technology(
                 *context.state.active_unified_technology.write().await = Some(unified);
                 Ok((*provider, framework_name.to_string()))
             }
+            ProviderType::Mlx => {
+                // Parse language from tech_id (e.g., "mlx:swift" -> "MLX Swift")
+                let lang_name = tech_id
+                    .strip_prefix("mlx:")
+                    .map(|l| match l {
+                        "swift" => "MLX Swift",
+                        "python" => "MLX Python",
+                        _ => "MLX Swift",
+                    })
+                    .unwrap_or("MLX Swift");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: lang_name.to_string(),
+                    description: format!("{} - Machine learning on Apple Silicon", lang_name),
+                    provider: ProviderType::Mlx,
+                    url: Some("https://ml-explore.github.io/mlx-swift/documentation/mlx".to_string()),
+                    kind: multi_provider_client::types::TechnologyKind::MlxFramework,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, lang_name.to_string()))
+            }
+            ProviderType::HuggingFace => {
+                // Parse technology from tech_id (e.g., "hf:transformers" -> "Transformers")
+                let tech_name = tech_id
+                    .strip_prefix("hf:")
+                    .map(|t| match t {
+                        "transformers" => "Transformers",
+                        "swift-transformers" => "Swift Transformers",
+                        "models" => "Models",
+                        _ => "Transformers",
+                    })
+                    .unwrap_or("Transformers");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: tech_name.to_string(),
+                    description: format!("Hugging Face {} documentation", tech_name),
+                    provider: ProviderType::HuggingFace,
+                    url: Some("https://huggingface.co/docs/transformers".to_string()),
+                    kind: multi_provider_client::types::TechnologyKind::HfLibrary,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, tech_name.to_string()))
+            }
         }
     } else {
         // No provider detected - check if there's an active technology, otherwise default to Apple/SwiftUI
@@ -656,6 +786,10 @@ async fn execute_search_query(
         "ton", "blockchain", "tonapi",
         // Cocoon
         "cocoon",
+        // MLX but not ML concepts like "array", "neural"
+        "mlx", "mlxswift",
+        // Hugging Face but not model names that might be search terms
+        "huggingface", "hf", "transformers",
     ];
 
     let search_keywords: Vec<&str> = intent
@@ -680,6 +814,8 @@ async fn execute_search_query(
         ProviderType::Cocoon => search_cocoon(context, &search_query, max_results).await,
         ProviderType::Mdn => search_mdn(context, &search_query, max_results).await,
         ProviderType::WebFrameworks => search_web_frameworks(context, intent, &search_query, max_results).await,
+        ProviderType::Mlx => search_mlx(context, intent, &search_query, max_results).await,
+        ProviderType::HuggingFace => search_huggingface(context, intent, &search_query, max_results).await,
     }
 }
 
@@ -1250,6 +1386,144 @@ async fn search_web_frameworks(
             full_content,
             declaration: None,
             parameters: Vec::new(),
+        });
+    }
+
+    Ok(results)
+}
+
+/// Search MLX documentation (Apple Silicon ML framework)
+async fn search_mlx(
+    context: &Arc<AppContext>,
+    intent: &QueryIntent,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    use multi_provider_client::mlx::types::MlxLanguage;
+
+    // Determine if Swift or Python based on technology identifier
+    let language = intent
+        .technology
+        .as_ref()
+        .and_then(|t| t.strip_prefix("mlx:"))
+        .map(|l| match l {
+            "swift" => Some(MlxLanguage::Swift),
+            "python" => Some(MlxLanguage::Python),
+            _ => None,
+        })
+        .flatten();
+
+    let items = match context.providers.mlx.search(query, language).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "MLX search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full article for top results
+        let (full_content, code_sample, declaration) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.mlx.get_article(&item.path, item.language).await {
+                Ok(article) => {
+                    let code = article.examples.first().map(|e| e.code.clone());
+                    let content = if !article.content.is_empty() {
+                        Some(trim_text(&article.content, MAX_CONTENT_LENGTH))
+                    } else {
+                        None
+                    };
+                    (content, code, article.declaration)
+                }
+                Err(_) => (None, None, None),
+            }
+        } else {
+            (None, None, None)
+        };
+
+        results.push(DocResult {
+            title: item.name.clone(),
+            kind: item.kind.to_string(),
+            path: item.path.clone(),
+            summary: item.description.clone(),
+            platforms: Some(format!("MLX {}", item.language)),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration,
+            parameters: Vec::new(),
+        });
+    }
+
+    Ok(results)
+}
+
+/// Search Hugging Face documentation
+async fn search_huggingface(
+    context: &Arc<AppContext>,
+    intent: &QueryIntent,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    use multi_provider_client::huggingface::types::HfTechnologyKind;
+
+    // Determine which technology to search
+    let technology = intent
+        .technology
+        .as_ref()
+        .and_then(|t| t.strip_prefix("hf:"))
+        .map(|tech| match tech {
+            "swift-transformers" => Some(HfTechnologyKind::SwiftTransformers),
+            "transformers" => Some(HfTechnologyKind::Transformers),
+            "models" => Some(HfTechnologyKind::Models),
+            _ => None,
+        })
+        .flatten();
+
+    let items = match context.providers.huggingface.search(query, technology).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "Hugging Face search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full article for top results
+        let (full_content, code_sample, declaration, parameters) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.huggingface.get_article(&item.path, item.technology).await {
+                Ok(article) => {
+                    let code = article.examples.first().map(|e| e.code.clone());
+                    let content = if !article.content.is_empty() {
+                        Some(trim_text(&article.content, MAX_CONTENT_LENGTH))
+                    } else {
+                        None
+                    };
+                    let params: Vec<(String, String)> = article
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.description.clone()))
+                        .collect();
+                    (content, code, article.declaration, params)
+                }
+                Err(_) => (None, None, None, Vec::new()),
+            }
+        } else {
+            (None, None, None, Vec::new())
+        };
+
+        results.push(DocResult {
+            title: item.name.clone(),
+            kind: item.kind.to_string(),
+            path: item.path.clone(),
+            summary: item.description.clone(),
+            platforms: Some(format!("Hugging Face {}", item.technology)),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration,
+            parameters,
         });
     }
 

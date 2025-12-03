@@ -55,7 +55,19 @@
   - ✅ **Example Quality Scoring**: Implemented `quality_score()` for code examples based on completeness (imports, exports), descriptions, and length.
   - ✅ **Documentation Updated**: CLAUDE.md updated with new providers, detection keywords, caching strategy, and test commands.
 
-- Phase 7 – Future Enhancements *(Pending)*
+- Phase 7 – ML/AI Documentation Providers *(Completed 2025-12-02 · Owner: Claude Code)*
+  - **MLX Provider**: Apple Silicon ML framework documentation for Swift and Python.
+  - **Hugging Face Provider**: Transformers and swift-transformers documentation for LLM development.
+  - ✅ **MLX Client Implementation**: Created `MlxClient` with search, get_article for Swift (DocC) and Python (Sphinx) documentation from ml-explore.github.io.
+  - ✅ **MLX Types**: Added `MlxTechnology`, `MlxCategory`, `MlxArticle`, `MlxLanguage` enum with 60+ predefined topics for Swift and Python.
+  - ✅ **Hugging Face Client Implementation**: Created `HuggingFaceClient` with search, get_article, search_models for Transformers and swift-transformers.
+  - ✅ **Hugging Face Types**: Added `HfTechnology`, `HfCategory`, `HfArticle`, `HfTechnologyKind` with TRANSFORMERS_TOPICS, SWIFT_TRANSFORMERS_TOPICS, and LLM_MODEL_FAMILIES.
+  - ✅ **Type System Extensions**: Added `ProviderType::Mlx` and `ProviderType::HuggingFace` to unified types. Added `TechnologyKind::MlxFramework` and `TechnologyKind::HfLibrary`.
+  - ✅ **Query Tool Integration**: Added MLX_KEYWORDS and HUGGINGFACE_KEYWORDS detection. Implemented `search_mlx()` and `search_huggingface()` functions.
+  - ✅ **Enhanced Apple ML Keywords**: Added 11 ML/AI frameworks to Apple detection (CoreML, CreateML, Vision, NaturalLanguage, Speech, SoundAnalysis, VisionKit, Accelerate, MLCompute, MetalPerformanceShaders, MetalPerformanceShadersGraph).
+  - ✅ **Documentation Updated**: CLAUDE.md, README.md, and MCP server instructions updated with new providers.
+
+- Phase 8 – Future Enhancements *(Pending)*
   - **Performance Optimization**: Profile hot paths in search and caching. Consider implementing parallel framework loading for global searches.
   - **Enhanced Metrics**: Add cache hit rate histograms, query latency p99 tracking, and per-framework usage analytics.
   - **Intelligent Caching**: Implement TTL-based cache invalidation for frequently updated frameworks. Consider predictive pre-fetching based on usage patterns.
@@ -63,6 +75,7 @@
   - **Recipe Expansion**: Add more curated recipes for UIKit, AppKit, Core Data, and Combine. Implement dynamic recipe generation from documentation patterns.
   - **MCP Protocol Enhancements**: Explore streaming responses for large result sets, progressive loading indicators, and cancellation support.
   - **Web Framework Enhancements**: Add Vue.js, Angular, Svelte, and Deno documentation providers. Implement live documentation fetching from react.dev and nextjs.org.
+  - **MLX/Hugging Face Enhancements**: Add model card parsing, fine-tuning documentation, and MLX-LM integration guides.
 
 ## Code Quality Notes (2025-11-29)
 - **Strengths**: Excellent test coverage, proper use of Rust atomics for thread-safe cache stats, clean separation of concerns across crates.

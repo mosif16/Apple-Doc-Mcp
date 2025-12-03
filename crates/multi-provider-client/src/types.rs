@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::cocoon::types::{CocoonDocument, CocoonSection, CocoonTechnology};
+use crate::huggingface::types::{HfArticle, HfCategory, HfTechnology, HfTechnologyKind};
 use crate::mdn::types::{MdnArticle, MdnCategory, MdnTechnology};
+use crate::mlx::types::{MlxArticle, MlxCategory, MlxLanguage, MlxTechnology};
 use crate::rust::types::{RustCategory, RustItem, RustTechnology};
 use crate::telegram::types::{TelegramCategory, TelegramItem, TelegramTechnology};
 use crate::ton::types::{TonCategory, TonEndpoint, TonTechnology};
@@ -22,6 +24,10 @@ pub enum ProviderType {
     Rust,
     Mdn,
     WebFrameworks,
+    /// MLX - Apple Silicon ML framework
+    Mlx,
+    /// Hugging Face - LLM models and transformers
+    HuggingFace,
 }
 
 impl ProviderType {
@@ -35,6 +41,8 @@ impl ProviderType {
             Self::Rust => "Rust",
             Self::Mdn => "MDN",
             Self::WebFrameworks => "Web Frameworks",
+            Self::Mlx => "MLX",
+            Self::HuggingFace => "Hugging Face",
         }
     }
 
@@ -48,6 +56,8 @@ impl ProviderType {
             Self::Rust => "Rust Language and Crate Documentation",
             Self::Mdn => "MDN Web Documentation (JavaScript, Web APIs, CSS)",
             Self::WebFrameworks => "React, Next.js, and Node.js Documentation",
+            Self::Mlx => "MLX Machine Learning Framework for Apple Silicon",
+            Self::HuggingFace => "Hugging Face Transformers and Model Documentation",
         }
     }
 }
@@ -85,6 +95,10 @@ pub enum TechnologyKind {
     MdnCategory,
     /// Web framework (React, Next.js, Node.js)
     WebFramework,
+    /// MLX framework (Swift or Python)
+    MlxFramework,
+    /// Hugging Face library (Transformers, Hub, etc.)
+    HfLibrary,
 }
 
 impl UnifiedTechnology {
@@ -169,6 +183,28 @@ impl UnifiedTechnology {
             description: tech.description,
             url: Some(tech.url),
             kind: TechnologyKind::WebFramework,
+        }
+    }
+
+    pub fn from_mlx(tech: MlxTechnology) -> Self {
+        Self {
+            provider: ProviderType::Mlx,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::MlxFramework,
+        }
+    }
+
+    pub fn from_huggingface(tech: HfTechnology) -> Self {
+        Self {
+            provider: ProviderType::HuggingFace,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::HfLibrary,
         }
     }
 }
@@ -335,6 +371,50 @@ impl UnifiedFrameworkData {
             sections: vec![],
         }
     }
+
+    pub fn from_mlx(data: MlxCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.path.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(item.kind.to_string()),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Mlx,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
+
+    pub fn from_huggingface(data: HfCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.path.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(item.kind.to_string()),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::HuggingFace,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
 }
 
 /// Unified symbol/item data
@@ -394,6 +474,22 @@ pub enum SymbolContent {
         examples: Vec<WebFrameworkExampleInfo>,
         content: String,
     },
+    /// MLX documentation
+    Mlx {
+        language: String,
+        declaration: Option<String>,
+        documentation: String,
+        examples: Vec<MlxExampleInfo>,
+        platforms: Vec<String>,
+    },
+    /// Hugging Face documentation
+    HuggingFace {
+        technology: String,
+        declaration: Option<String>,
+        documentation: String,
+        examples: Vec<HfExampleInfo>,
+        parameters: Vec<HfParamInfo>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -417,6 +513,29 @@ pub struct WebFrameworkExampleInfo {
     pub language: String,
     pub filename: Option<String>,
     pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MlxExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HfExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HfParamInfo {
+    pub name: String,
+    pub description: String,
+    pub param_type: Option<String>,
+    pub default_value: Option<String>,
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -630,6 +749,92 @@ impl UnifiedSymbolData {
                 api_signature: data.api_signature,
                 examples,
                 content: data.content,
+            },
+            related: data
+                .related
+                .into_iter()
+                .map(|r| UnifiedReference {
+                    identifier: r.clone(),
+                    title: r,
+                    description: None,
+                    kind: None,
+                    url: None,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn from_mlx(data: MlxArticle) -> Self {
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| MlxExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Mlx,
+            title: data.title,
+            description: data.description,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::Mlx {
+                language: data.language.to_string(),
+                declaration: data.declaration,
+                documentation: data.content,
+                examples,
+                platforms: data.platforms,
+            },
+            related: data
+                .related
+                .into_iter()
+                .map(|r| UnifiedReference {
+                    identifier: r.clone(),
+                    title: r,
+                    description: None,
+                    kind: None,
+                    url: None,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn from_huggingface(data: HfArticle) -> Self {
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| HfExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        let parameters = data
+            .parameters
+            .into_iter()
+            .map(|p| HfParamInfo {
+                name: p.name,
+                description: p.description,
+                param_type: p.param_type,
+                default_value: p.default_value,
+                required: p.required,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::HuggingFace,
+            title: data.title,
+            description: data.description,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::HuggingFace {
+                technology: data.technology.to_string(),
+                declaration: data.declaration,
+                documentation: data.content,
+                examples,
+                parameters,
             },
             related: data
                 .related

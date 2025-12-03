@@ -9,7 +9,7 @@ use tracing::{debug, info, warn};
 use crate::state::{AppContext, TelemetryEntry};
 use time::OffsetDateTime;
 
-const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider documentation server. Use the `query` tool to retrieve official documentation for Apple platforms, Rust, Telegram Bot API, TON blockchain, Cocoon, MDN Web Docs, and Web Frameworks (React, Next.js, Node.js).
+const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider documentation server. Use the `query` tool to retrieve official documentation for Apple platforms, Rust, Telegram Bot API, TON blockchain, Cocoon, MDN Web Docs, Web Frameworks (React, Next.js, Node.js), MLX (Apple Silicon ML), and Hugging Face (Transformers).
 
 ## How to Use
 
@@ -24,6 +24,8 @@ const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider docum
 - "React useState hook" → React documentation with usage patterns
 - "Next.js server components" → Next.js App Router documentation
 - "Node.js fs readFile" → Node.js API documentation
+- "MLX array operations Swift" → MLX framework documentation
+- "Hugging Face AutoModel" → Transformers library documentation
 
 ## What You Get
 
@@ -44,13 +46,15 @@ For top results, the tool returns:
 
 ## Supported Providers
 
-- **Apple**: SwiftUI, UIKit, Foundation, CoreData, and 50+ frameworks
+- **Apple**: SwiftUI, UIKit, Foundation, CoreData, CoreML, Vision, and 60+ frameworks
 - **Rust**: Standard library (std, core, alloc) and crates (tokio, serde, etc.)
 - **Telegram**: Bot API methods and types
 - **TON**: Blockchain API endpoints
 - **Cocoon**: Confidential computing documentation
 - **MDN**: JavaScript, TypeScript, Web APIs, DOM documentation
-- **Web Frameworks**: React, Next.js, Node.js documentation with examples"#;
+- **Web Frameworks**: React, Next.js, Node.js documentation with examples
+- **MLX**: Apple Silicon ML framework (Swift and Python)
+- **Hugging Face**: Transformers and swift-transformers for LLM development"#;
 
 pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
     let stdin = io::stdin();

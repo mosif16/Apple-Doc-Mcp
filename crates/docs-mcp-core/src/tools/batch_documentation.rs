@@ -166,8 +166,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             ProviderType::TON => fetch_ton_info(&context, path).await,
             ProviderType::Cocoon => fetch_cocoon_info(&context, &active.identifier, path).await,
             ProviderType::Rust => fetch_rust_info(&context, &active.identifier, path).await,
-            // MDN and WebFrameworks not supported in batch documentation
-            ProviderType::Mdn | ProviderType::WebFrameworks => {
+            // MDN, WebFrameworks, Mlx, and HuggingFace not supported in batch documentation
+            ProviderType::Mdn | ProviderType::WebFrameworks | ProviderType::Mlx | ProviderType::HuggingFace => {
                 Err(anyhow::anyhow!("Provider {} does not support batch documentation", provider.name()))
             }
         };

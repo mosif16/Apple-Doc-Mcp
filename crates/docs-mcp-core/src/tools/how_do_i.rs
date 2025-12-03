@@ -74,7 +74,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
                 .context("No technology selected. Use `choose_technology` before requesting a recipe.")?
         }
         ProviderType::Telegram | ProviderType::TON | ProviderType::Cocoon | ProviderType::Rust
-        | ProviderType::Mdn | ProviderType::WebFrameworks => {
+        | ProviderType::Mdn | ProviderType::WebFrameworks | ProviderType::Mlx | ProviderType::HuggingFace => {
             context
                 .state
                 .active_unified_technology

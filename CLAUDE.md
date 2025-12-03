@@ -5,13 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that provides access to developer documentation from multiple providers. It enables AI coding assistants to search, browse, and retrieve official documentation for:
-- **Apple**: SwiftUI, UIKit, Foundation, and 50+ frameworks
+- **Apple**: SwiftUI, UIKit, Foundation, CoreML, Vision, and 60+ frameworks (including ML/AI)
 - **Telegram**: Bot API methods and types
 - **TON**: Blockchain API endpoints
 - **Cocoon**: Confidential computing documentation
 - **Rust**: Standard library (std, core, alloc) and any crate from docs.rs
 - **MDN**: JavaScript, TypeScript, Web APIs, DOM documentation
 - **Web Frameworks**: React, Next.js, and Node.js documentation
+- **MLX**: Apple's machine learning framework for Apple Silicon (Swift and Python)
+- **Hugging Face**: Transformers library and swift-transformers for LLM/AI development
 
 ## Build Commands
 
@@ -42,7 +44,7 @@ cargo clippy --all-targets
 │   ├── docs-mcp-client/       # HTTP client for Apple's documentation API
 │   ├── docs-mcp-core/         # Core logic: tools, state, services, transport
 │   ├── docs-mcp/          # MCP protocol bootstrap and config resolution
-│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, and Web Frameworks APIs
+│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, and Hugging Face APIs
 │       ├── src/
 │       │   ├── telegram/        # Telegram Bot API client
 │       │   ├── ton/             # TON blockchain API client
@@ -50,6 +52,8 @@ cargo clippy --all-targets
 │       │   ├── rust/            # Rust documentation client (std + docs.rs)
 │       │   ├── mdn/             # MDN Web Docs client (JavaScript, Web APIs)
 │       │   ├── web_frameworks/  # React, Next.js, Node.js documentation client
+│       │   ├── mlx/             # MLX ML framework client (Swift + Python)
+│       │   ├── huggingface/     # Hugging Face transformers client
 │       │   ├── types.rs         # Unified types across all providers
 │       │   └── lib.rs           # ProviderClients aggregation
 ```
@@ -69,6 +73,8 @@ cargo clippy --all-targets
   - `RustClient`: Rust std library + any crate from `docs.rs`
   - `MdnClient`: JavaScript, TypeScript, Web APIs from `developer.mozilla.org`
   - `WebFrameworksClient`: React, Next.js, Node.js documentation with example extraction
+  - `MlxClient`: MLX ML framework documentation (Swift DocC + Python Sphinx) from `ml-explore.github.io`
+  - `HuggingFaceClient`: Transformers and swift-transformers documentation from `huggingface.co`
 
 ### Provider Architecture
 
@@ -83,6 +89,8 @@ pub enum ProviderType {
     Rust,
     Mdn,
     WebFrameworks,
+    Mlx,
+    HuggingFace,
 }
 
 pub struct ProviderClients {
@@ -93,6 +101,8 @@ pub struct ProviderClients {
     pub rust: RustClient,
     pub mdn: MdnClient,
     pub web_frameworks: WebFrameworksClient,
+    pub mlx: MlxClient,
+    pub huggingface: HuggingFaceClient,
 }
 ```
 
@@ -108,7 +118,7 @@ Each tool dispatches to the appropriate provider based on `active_provider` stat
 
 The `query` tool acts as an intelligent entry point that:
 1. Parses natural language queries to extract intent (how-to, reference, search)
-2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks)
+2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks, MLX, Hugging Face)
 3. Auto-selects the relevant technology/framework
 4. Executes optimized search across the detected provider
 5. Fetches detailed documentation for top results
@@ -157,6 +167,18 @@ The `query` tool acts as an intelligent entry point that:
 - **Node.js**: Core modules (fs, path, http, crypto, stream)
 - Usage examples prioritized by completeness and runnability
 
+#### MLX (Apple Silicon ML)
+- **MLX Swift**: MLXArray, MLXRandom, MLXLinalg, MLXNN, MLXFFT, MLXOptimizers
+- **MLX Python**: mlx.core, mlx.nn, mlx.optimizers, operations
+- Apple Silicon optimized machine learning primitives
+- Documentation from ml-explore.github.io (DocC for Swift, Sphinx for Python)
+
+#### Hugging Face
+- **Transformers**: AutoModel, AutoTokenizer, pipeline, training utilities
+- **swift-transformers**: Hub, Models, Tokenizers for iOS/macOS
+- LLM model families: GPT, LLaMA, BERT, T5, Whisper, CLIP, etc.
+- Model card documentation and usage patterns
+
 ### Unified Query Tool Features
 
 The `query` tool implements advanced natural language processing:
@@ -175,7 +197,7 @@ QueryIntent {
 
 #### Provider Auto-Detection
 Intelligently detects the target provider from query context:
-- **Apple**: SwiftUI, UIKit, iOS, macOS keywords + 50+ framework names
+- **Apple**: SwiftUI, UIKit, iOS, macOS keywords + 60+ framework names (including CoreML, Vision, NaturalLanguage)
 - **Rust**: std, tokio, serde, and other popular crate names
 - **Telegram**: bot, sendmessage, telegram, webhook keywords
 - **TON**: blockchain, wallet, jetton, tonapi keywords
@@ -184,6 +206,8 @@ Intelligently detects the target provider from query context:
 - **React**: react, jsx, hook, usestate, useeffect, component keywords
 - **Next.js**: nextjs, next, approuter, servercomponent keywords
 - **Node.js**: nodejs, node, fs, path, http, stream keywords
+- **MLX**: mlx, mlxarray, mlxnn, apple silicon, ml-explore keywords
+- **Hugging Face**: huggingface, transformers, automodel, autotokenizer, swift-transformers keywords
 
 #### Query Type Classification
 Three query types with specialized handling:
@@ -203,6 +227,8 @@ input_examples: Some(vec![
     json!({"query": "React useState hook"}),
     json!({"query": "Next.js server components"}),
     json!({"query": "Node.js fs readFile"}),
+    json!({"query": "MLX array operations Swift"}),
+    json!({"query": "Hugging Face AutoModel from_pretrained"}),
 ])
 ```
 
@@ -252,6 +278,9 @@ All providers use two-tier caching:
 | MDN article content | 30min | 24h |
 | React/Next.js docs | 1h | 24h |
 | Node.js API index | 24h | 7d |
+| MLX Swift docs | 1h | 24h |
+| MLX Python docs | 1h | 24h |
+| Hugging Face docs | 1h | 24h |
 
 ## Environment Variables
 
@@ -290,6 +319,12 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test query with Node.js
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Node.js fs readFile"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with MLX (Apple Silicon ML)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"MLX array operations Swift"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Hugging Face
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Hugging Face AutoModel from_pretrained"}},"id":3}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## Adding a New Provider

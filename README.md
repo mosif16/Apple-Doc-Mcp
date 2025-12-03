@@ -6,13 +6,15 @@ A Model Context Protocol (MCP) server written in Rust that provides seamless acc
 
 | Provider | Description | Technologies |
 |----------|-------------|--------------|
-| **Apple** | iOS/macOS development | SwiftUI, UIKit, Foundation, and 50+ frameworks |
+| **Apple** | iOS/macOS development | SwiftUI, UIKit, Foundation, CoreML, Vision, and 60+ frameworks |
 | **Rust** | Rust documentation | std, core, alloc + any crate from docs.rs |
 | **Telegram** | Bot API documentation | Methods, types, and parameters |
 | **TON** | Blockchain API | REST endpoints and schemas |
 | **Cocoon** | Confidential computing | Architecture and smart contracts |
 | **MDN** | Web development | JavaScript, TypeScript, Web APIs, DOM |
 | **Web Frameworks** | Frontend/Backend | React, Next.js, Node.js |
+| **MLX** | Apple Silicon ML | MLXArray, MLXNN, MLXOptimizers (Swift & Python) |
+| **Hugging Face** | LLM/AI development | Transformers, swift-transformers, model cards |
 
 ## Quick Start
 
@@ -80,6 +82,8 @@ The query tool automatically routes to the correct provider based on keywords:
 - **React**: hook, useState, useEffect, component, JSX, etc.
 - **Next.js**: nextjs, App Router, server component, etc.
 - **Node.js**: nodejs, fs, path, http, stream, etc.
+- **MLX**: mlx, mlxarray, mlxnn, apple silicon, ml-explore, etc.
+- **Hugging Face**: huggingface, transformers, automodel, autotokenizer, etc.
 
 ## What You Get
 
@@ -168,6 +172,24 @@ query { "query": "Node.js path join" }
 query { "query": "Node.js stream pipe" }
 ```
 
+### MLX (Apple Silicon ML)
+
+```
+query { "query": "MLX array operations Swift" }
+query { "query": "MLX neural network layers" }
+query { "query": "mlx.core array Python" }
+query { "query": "MLX optimizers SGD" }
+```
+
+### Hugging Face
+
+```
+query { "query": "Hugging Face AutoModel" }
+query { "query": "transformers AutoTokenizer" }
+query { "query": "swift-transformers Hub" }
+query { "query": "Hugging Face pipeline" }
+```
+
 ## Search Tips
 
 - Use natural language queries for best results
@@ -197,7 +219,9 @@ query { "query": "Node.js stream pipe" }
 │       ├── cocoon/              # Cocoon confidential computing
 │       ├── rust/                # Rust std + docs.rs
 │       ├── mdn/                 # MDN Web Docs
-│       └── web_frameworks/      # React, Next.js, Node.js
+│       ├── web_frameworks/      # React, Next.js, Node.js
+│       ├── mlx/                 # MLX Apple Silicon ML
+│       └── huggingface/         # Hugging Face Transformers
 ```
 
 ## Development

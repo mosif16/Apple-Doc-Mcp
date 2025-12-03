@@ -1,5 +1,8 @@
 # Implementation Plan: Web Documentation Providers
 
+> **STATUS: COMPLETED** - Implemented in Phase 6 (2025-12-02). See `agents.md` for completion details.
+> Additional ML/AI providers (MLX, Hugging Face) were added in Phase 7 (2025-12-02).
+
 ## Overview
 
 Expand the docs-mcp query system to support JavaScript/TypeScript (MDN) and Web Framework (React, Next.js, Node.js) documentation with comprehensive usage example extraction.
