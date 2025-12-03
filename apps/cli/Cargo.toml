@@ -1,12 +1,12 @@
 [package]
-name = "apple-docs-cli"
+name = "docs-mcp-cli"
 version = "1.0.0"
 edition = "2021"
 license = "MIT"
 publish = false
 
 [dependencies]
-apple-docs-mcp = {path = "../../crates/apple-docs-mcp"}
+docs-mcp = {path = "../../crates/docs-mcp"}
 anyhow = {workspace = true}
 config = {workspace = true}
 tokio = {workspace = true}

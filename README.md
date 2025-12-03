@@ -25,8 +25,8 @@ Configure your MCP client:
 ```json
 {
   "mcpServers": {
-    "apple-docs": {
-      "command": "/absolute/path/to/target/release/apple-docs-cli"
+    "docs-mcp": {
+      "command": "/absolute/path/to/target/release/docs-mcp-cli"
     }
   }
 }
@@ -35,7 +35,7 @@ Configure your MCP client:
 For local development:
 
 ```bash
-cargo run -p apple-docs-cli
+cargo run -p docs-mcp-cli
 ```
 
 ## Typical Workflow
@@ -182,8 +182,8 @@ search_symbols { "query": "tdx" }
 
 | Variable | Purpose |
 |----------|---------|
-| `APPLEDOC_CACHE_DIR` | Override disk cache location |
-| `APPLEDOC_HEADLESS` | Set to `1` to skip stdio transport (testing) |
+| `DOCSMCP_CACHE_DIR` | Override disk cache location |
+| `DOCSMCP_HEADLESS` | Set to `1` to skip stdio transport (testing) |
 | `RUST_LOG` | Control logging (`info`, `debug`, `trace`) |
 
 ## Architecture
@@ -191,9 +191,9 @@ search_symbols { "query": "tdx" }
 ```
 ├── apps/cli/                    # CLI entry point
 ├── crates/
-│   ├── apple-docs-client/       # Apple documentation API client
-│   ├── apple-docs-core/         # MCP tools, state, services
-│   ├── apple-docs-mcp/          # MCP protocol bootstrap
+│   ├── docs-mcp-client/         # Apple documentation API client
+│   ├── docs-mcp-core/           # MCP tools, state, services
+│   ├── docs-mcp/                # MCP protocol bootstrap
 │   └── multi-provider-client/   # Telegram, TON, Cocoon, Rust clients
 ```
 
@@ -210,7 +210,7 @@ cargo test
 cargo clippy --all-targets
 
 # Test MCP handshake
-printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n' | ./target/release/apple-docs-cli
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## License

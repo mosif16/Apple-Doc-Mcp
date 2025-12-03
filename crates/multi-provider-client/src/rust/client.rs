@@ -15,7 +15,7 @@ use super::types::{
     RustCrate, RustItem, RustItemKind, RustSearchIndex, RustSearchIndexEntry, RustTechnology,
     STD_CRATES,
 };
-use apple_docs_client::cache::{DiskCache, MemoryCache};
+use docs_mcp_client::cache::{DiskCache, MemoryCache};
 
 const STD_SEARCH_INDEX_URL: &str = "https://doc.rust-lang.org/search-index.js";
 const DOCS_RS_RELEASES_SEARCH: &str = "https://docs.rs/releases/search";
@@ -129,25 +129,57 @@ impl RustClient {
             });
         }
 
-        // Fetch from docs.rs
-        let url = format!("{}/{}/latest/data.json", DOCS_RS_CRATE_DATA, name);
-        debug!(url = %url, "Fetching crate data from docs.rs");
+        // Fetch from crates.io API (docs.rs doesn't have a JSON API)
+        let url = format!("https://crates.io/api/v1/crates/{}", name);
+        debug!(url = %url, "Fetching crate data from crates.io");
 
         let response = self
             .http
             .get(&url)
             .send()
             .await
-            .context("Failed to fetch crate data from docs.rs")?;
+            .context("Failed to fetch crate data from crates.io")?;
 
         if !response.status().is_success() {
-            anyhow::bail!("Crate '{}' not found on docs.rs: {}", name, response.status());
+            anyhow::bail!("Crate '{}' not found on crates.io: {}", name, response.status());
         }
 
-        let data: DocsRsCrateData = response
+        let json: Value = response
             .json()
             .await
-            .context("Failed to parse docs.rs crate data")?;
+            .context("Failed to parse crates.io response")?;
+
+        // Extract data from crates.io API response format
+        let crate_obj = json.get("crate")
+            .context("Missing 'crate' field in crates.io response")?;
+
+        let data = DocsRsCrateData {
+            name: crate_obj.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(name)
+                .to_string(),
+            version: crate_obj.get("newest_version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("latest")
+                .to_string(),
+            description: crate_obj.get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            repository: crate_obj.get("repository")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            documentation: crate_obj.get("documentation")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            keywords: crate_obj.get("keywords")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .collect())
+                .unwrap_or_default(),
+            releases: Vec::new(), // We don't need releases for search functionality
+        };
 
         // Cache the result
         let _ = self.disk_cache.store(&cache_key, data.clone()).await;
@@ -496,7 +528,13 @@ impl RustClient {
     pub async fn search(&self, crate_name: &str, query: &str) -> Result<Vec<RustItem>> {
         let index = self.get_search_index(crate_name).await?;
         let crate_info = self.get_crate(crate_name).await?;
-        let query_lower = query.to_lowercase();
+
+        // Tokenize the query into individual search terms
+        let query_terms: Vec<String> = query
+            .to_lowercase()
+            .split_whitespace()
+            .map(String::from)
+            .collect();
 
         let mut results: Vec<(i32, RustItem)> = index
             .items
@@ -506,21 +544,32 @@ impl RustClient {
                 let desc_lower = entry.desc.to_lowercase();
                 let path_lower = entry.path.to_lowercase();
 
-                // Calculate match score
+                // Calculate match score based on how many query terms match
                 let mut score = 0i32;
+                let mut matched_terms = 0;
 
-                // Exact name match
-                if name_lower == query_lower {
-                    score += 100;
-                } else if name_lower.starts_with(&query_lower) {
-                    score += 50;
-                } else if name_lower.contains(&query_lower) {
-                    score += 30;
-                } else if desc_lower.contains(&query_lower) {
-                    score += 10;
-                } else if path_lower.contains(&query_lower) {
-                    score += 5;
-                } else {
+                for term in &query_terms {
+                    // Exact name match for this term
+                    if name_lower == *term {
+                        score += 100;
+                        matched_terms += 1;
+                    } else if name_lower.starts_with(term) {
+                        score += 50;
+                        matched_terms += 1;
+                    } else if name_lower.contains(term) {
+                        score += 30;
+                        matched_terms += 1;
+                    } else if desc_lower.contains(term) {
+                        score += 10;
+                        matched_terms += 1;
+                    } else if path_lower.contains(term) {
+                        score += 5;
+                        matched_terms += 1;
+                    }
+                }
+
+                // Only include if at least one term matched
+                if matched_terms == 0 {
                     return None;
                 }
 
@@ -533,6 +582,11 @@ impl RustClient {
                     RustItemKind::Module => 5,
                     _ => 0,
                 };
+
+                // Bonus for matching multiple terms
+                if matched_terms > 1 {
+                    score += matched_terms as i32 * 5;
+                }
 
                 let item = RustItem::from_search_entry(entry, crate_name, &crate_info.version);
                 Some((score, item))
@@ -654,12 +708,149 @@ impl RustClient {
             .await
             .context("Failed to fetch std search index")?;
 
-        if !response.status().is_success() {
-            anyhow::bail!("Failed to fetch std search index: {}", response.status());
+        if response.status().is_success() {
+            let text = response.text().await?;
+            let index = parse_search_index_js(&text, crate_name)?;
+            if !index.items.is_empty() {
+                return Ok(index);
+            }
         }
 
-        let text = response.text().await?;
-        parse_search_index_js(&text, crate_name)
+        // Fallback: scrape the std documentation page directly
+        // The modern rustdoc uses a binary database format, so we scrape HTML instead
+        debug!("Search index unavailable or empty, falling back to HTML scraping for std");
+        self.scrape_std_index(crate_name).await
+    }
+
+    /// Scrape the std library documentation page to build a search index
+    async fn scrape_std_index(&self, crate_name: &str) -> Result<RustSearchIndex> {
+        use scraper::{Html, Selector};
+
+        // Use the "all items" page which has a comprehensive listing
+        let url = format!("https://doc.rust-lang.org/{}/all.html", crate_name);
+        debug!(url = %url, "Scraping std all items page for search index");
+
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch std all items page")?;
+
+        if !response.status().is_success() {
+            // Fallback to index.html if all.html doesn't exist
+            return self.scrape_std_index_fallback(crate_name).await;
+        }
+
+        let html = response.text().await?;
+        let document = Html::parse_document(&html);
+
+        let mut items = Vec::new();
+
+        // The all.html page has sections like "Structs", "Enums", etc.
+        // with links to each item
+        if let Ok(selector) = Selector::parse("section a, .all-items a, ul.all-items-list a, main a") {
+            for element in document.select(&selector) {
+                let name = element.text().collect::<String>().trim().to_string();
+                if name.is_empty() || name.contains("All Items") || name.len() > 100 {
+                    continue;
+                }
+
+                let href = element.value().attr("href").unwrap_or("");
+
+                // Determine item kind from href
+                let kind = if href.contains("struct.") {
+                    RustItemKind::Struct
+                } else if href.contains("enum.") {
+                    RustItemKind::Enum
+                } else if href.contains("trait.") {
+                    RustItemKind::Trait
+                } else if href.contains("fn.") {
+                    RustItemKind::Function
+                } else if href.contains("macro.") {
+                    RustItemKind::Macro
+                } else if href.contains("type.") {
+                    RustItemKind::Type
+                } else if href.contains("constant.") {
+                    RustItemKind::Constant
+                } else if href.contains("static.") {
+                    RustItemKind::Static
+                } else if href.ends_with("/index.html") || (href.ends_with("/") && !href.contains('.')) {
+                    RustItemKind::Module
+                } else {
+                    continue; // Skip unknown items
+                };
+
+                // Extract module path from href
+                let path = href
+                    .trim_end_matches(".html")
+                    .split('/')
+                    .filter(|s| !s.is_empty() && !s.contains('.'))
+                    .collect::<Vec<_>>()
+                    .join("::");
+
+                items.push(RustSearchIndexEntry {
+                    name: name.clone(),
+                    path,
+                    kind,
+                    desc: String::new(),
+                    parent: None,
+                });
+            }
+        }
+
+        // Deduplicate items by name
+        items.sort_by(|a, b| a.name.cmp(&b.name));
+        items.dedup_by(|a, b| a.name == b.name && a.kind == b.kind);
+
+        debug!(count = items.len(), "Scraped items from std all items page");
+
+        Ok(RustSearchIndex {
+            crate_name: crate_name.to_string(),
+            crate_version: "latest".to_string(),
+            items,
+        })
+    }
+
+    /// Fallback scraper for std index when all.html is unavailable
+    async fn scrape_std_index_fallback(&self, crate_name: &str) -> Result<RustSearchIndex> {
+        use scraper::{Html, Selector};
+
+        let url = format!("https://doc.rust-lang.org/{}/index.html", crate_name);
+        debug!(url = %url, "Scraping std index.html as fallback");
+
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch std documentation")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to fetch std docs: {}", response.status());
+        }
+
+        let html = response.text().await?;
+        let document = Html::parse_document(&html);
+
+        let mut items = Vec::new();
+
+        // Parse items from the modern rustdoc structure
+        if let Ok(dt_selector) = Selector::parse("dl.item-table dt") {
+            for dt_element in document.select(&dt_selector) {
+                if let Some(item) = self.parse_item_table_dt(&dt_element, crate_name) {
+                    items.push(item);
+                }
+            }
+        }
+
+        debug!(count = items.len(), "Scraped items from std index.html fallback");
+
+        Ok(RustSearchIndex {
+            crate_name: crate_name.to_string(),
+            crate_version: "latest".to_string(),
+            items,
+        })
     }
 
     /// Fetch and parse a docs.rs crate's search index
@@ -683,15 +874,232 @@ impl RustClient {
                 parse_search_index_js(&text, crate_name)
             }
             _ => {
-                // Fall back to creating a minimal index from crate metadata
-                debug!("Search index not available, creating minimal index");
-                Ok(RustSearchIndex {
-                    crate_name: crate_name.to_string(),
-                    crate_version: crate_info.version,
-                    items: vec![],
-                })
+                // Fall back to scraping the crate's main documentation page
+                debug!("Search index not available, scraping crate documentation");
+                self.scrape_crate_index(crate_name, &crate_info.version).await
             }
         }
+    }
+
+    /// Scrape a crate's documentation page to build a basic search index
+    async fn scrape_crate_index(&self, crate_name: &str, version: &str) -> Result<RustSearchIndex> {
+        use scraper::{Html, Selector};
+
+        // Fetch the main crate documentation page
+        let url = format!("https://docs.rs/{}/{}/{}/", crate_name, version, crate_name);
+        debug!(url = %url, "Scraping crate documentation for search index");
+
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch crate documentation")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to fetch crate docs: {}", response.status());
+        }
+
+        let html = response.text().await?;
+        let document = Html::parse_document(&html);
+
+        let mut items = Vec::new();
+
+        // Extract items from the main documentation page
+        // The modern rustdoc structure uses: <dl class="item-table"><dt><a>...</a></dt></dl>
+
+        // Try the modern rustdoc structure (item-table with dt > a)
+        if let Ok(dt_selector) = Selector::parse("dl.item-table dt") {
+            for dt_element in document.select(&dt_selector) {
+                if let Some(item) = self.parse_item_table_dt(&dt_element, crate_name) {
+                    items.push(item);
+                }
+            }
+        }
+
+        // If no items found, try legacy selectors
+        if items.is_empty() {
+            if let Ok(selector) = Selector::parse(".module-item") {
+                for element in document.select(&selector) {
+                    if let Some(item) = self.parse_module_item(&element, crate_name) {
+                        items.push(item);
+                    }
+                }
+            }
+        }
+
+        // Last resort: try very generic selectors
+        if items.is_empty() {
+            if let Ok(selector) = Selector::parse(".item-left, .item-right") {
+                for element in document.select(&selector) {
+                    if let Some(item) = self.parse_legacy_item(&element, crate_name) {
+                        items.push(item);
+                    }
+                }
+            }
+        }
+
+        debug!(count = items.len(), "Scraped items from crate documentation");
+
+        Ok(RustSearchIndex {
+            crate_name: crate_name.to_string(),
+            crate_version: version.to_string(),
+            items,
+        })
+    }
+
+    /// Parse a module item element into a search index entry
+    fn parse_module_item(&self, element: &scraper::ElementRef, _crate_name: &str) -> Option<RustSearchIndexEntry> {
+        use scraper::Selector;
+
+        // Extract link and text
+        let link_selector = Selector::parse("a").ok()?;
+        let link = element.select(&link_selector).next()?;
+
+        let name = link.text().collect::<String>().trim().to_string();
+        if name.is_empty() {
+            return None;
+        }
+
+        // Get the item kind from the class or span
+        let kind = if let Ok(kind_selector) = Selector::parse(".stab, .item-kind") {
+            element
+                .select(&kind_selector)
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_lowercase())
+                .unwrap_or_else(|| "module".to_string())
+        } else {
+            "module".to_string()
+        };
+
+        let item_kind = match kind.as_str() {
+            "struct" => RustItemKind::Struct,
+            "enum" => RustItemKind::Enum,
+            "trait" => RustItemKind::Trait,
+            "fn" | "function" => RustItemKind::Function,
+            "type" => RustItemKind::Type,
+            "macro" => RustItemKind::Macro,
+            "constant" | "const" => RustItemKind::Constant,
+            "static" => RustItemKind::Static,
+            _ => RustItemKind::Module,
+        };
+
+        // Get description
+        let desc = if let Ok(desc_selector) = Selector::parse(".item-desc, .item-right") {
+            element
+                .select(&desc_selector)
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        Some(RustSearchIndexEntry {
+            name,
+            path: String::new(), // Root level items have empty path
+            kind: item_kind,
+            desc,
+            parent: None,
+        })
+    }
+
+    /// Parse an item from a <dt> element in the item-table structure
+    fn parse_item_table_dt(&self, dt_element: &scraper::ElementRef, _crate_name: &str) -> Option<RustSearchIndexEntry> {
+        use scraper::Selector;
+
+        // Find the <a> tag inside the <dt>
+        let link_selector = Selector::parse("a").ok()?;
+        let link = dt_element.select(&link_selector).next()?;
+
+        // Extract name from link text
+        let name = link.text().collect::<String>().trim().to_string();
+        if name.is_empty() {
+            return None;
+        }
+
+        // Determine kind from the link's class (e.g., "mod", "struct", "fn", "macro", "attr")
+        let class = link.value().attr("class").unwrap_or("");
+        let kind = match class {
+            c if c.contains("mod") => RustItemKind::Module,
+            c if c.contains("struct") => RustItemKind::Struct,
+            c if c.contains("enum") => RustItemKind::Enum,
+            c if c.contains("trait") => RustItemKind::Trait,
+            c if c.contains("fn") => RustItemKind::Function,
+            c if c.contains("type") => RustItemKind::Type,
+            c if c.contains("macro") => RustItemKind::Macro,
+            c if c.contains("constant") => RustItemKind::Constant,
+            c if c.contains("static") => RustItemKind::Static,
+            c if c.contains("attr") => RustItemKind::Macro, // Attribute macros
+            _ => {
+                // Fallback: try to infer from href
+                let href = link.value().attr("href").unwrap_or("");
+                if href.contains("struct.") {
+                    RustItemKind::Struct
+                } else if href.contains("enum.") {
+                    RustItemKind::Enum
+                } else if href.contains("trait.") {
+                    RustItemKind::Trait
+                } else if href.contains("fn.") {
+                    RustItemKind::Function
+                } else if href.contains("/index.html") {
+                    RustItemKind::Module
+                } else {
+                    RustItemKind::Module
+                }
+            }
+        };
+
+        // Get description from the next <dd> sibling
+        let dd_selector = Selector::parse("dd").ok()?;
+        let desc = dt_element
+            .next_siblings()
+            .filter_map(scraper::ElementRef::wrap)
+            .find(|e| e.value().name() == "dd")
+            .map(|dd| dd.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        Some(RustSearchIndexEntry {
+            name,
+            path: String::new(),
+            kind,
+            desc,
+            parent: None,
+        })
+    }
+
+    /// Parse items using legacy selectors
+    fn parse_legacy_item(&self, element: &scraper::ElementRef, _crate_name: &str) -> Option<RustSearchIndexEntry> {
+        use scraper::Selector;
+
+        let link_selector = Selector::parse("a").ok()?;
+        let link = element.select(&link_selector).next()?;
+
+        let name = link.text().collect::<String>().trim().to_string();
+        if name.is_empty() {
+            return None;
+        }
+
+        let href = link.value().attr("href").unwrap_or("");
+        let kind = if href.contains("struct.") {
+            RustItemKind::Struct
+        } else if href.contains("enum.") {
+            RustItemKind::Enum
+        } else if href.contains("trait.") {
+            RustItemKind::Trait
+        } else if href.contains("fn.") {
+            RustItemKind::Function
+        } else {
+            RustItemKind::Module
+        };
+
+        Some(RustSearchIndexEntry {
+            name,
+            path: String::new(),
+            kind,
+            desc: String::new(),
+            parent: None,
+        })
     }
 
     /// Build the documentation URL for an item

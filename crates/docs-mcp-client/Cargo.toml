@@ -1,0 +1,22 @@
+[package]
+name = "docs-mcp-client"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = {workspace = true}
+dashmap = {workspace = true}
+directories = "5.0"
+reqwest = {workspace = true}
+serde = {workspace = true}
+serde_json = {workspace = true}
+thiserror = {workspace = true}
+time = {workspace = true}
+tokio = {workspace = true}
+tokio-util = {workspace = true}
+tracing = {workspace = true}
+
+[dev-dependencies]
+tempfile = {workspace = true}

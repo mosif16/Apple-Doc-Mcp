@@ -8,7 +8,7 @@
 - Phase 1 – Instrumentation & Benchmarks *(Completed 2025-10-20 19:05Z · Owner: Codex agent)*  
   - Capture latency/precision telemetry for each tool call path and define baseline KPIs (match density, snippet coverage).
   - Inventory cached framework metadata to confirm we can surface symbol counts, primer availability, and recipe coverage in responses.
-  - ✅ 2025-10-20: Added per-tool telemetry (latency, success, scoped metrics) by augmenting `ToolResponse.metadata` and recording runs in `telemetry_log`; logging now emits structured summaries from `apple_docs_transport`.
+  - ✅ 2025-10-20: Added per-tool telemetry (latency, success, scoped metrics) by augmenting `ToolResponse.metadata` and recording runs in `telemetry_log`; logging now emits structured summaries from `docs_mcp_transport`.
   - ✅ Baseline snapshot: 340 framework collections cached (of 364 technologies), SwiftUI references=72/topics=9, design primer caches=7 HIG files, knowledge entries=8 with 3 curated recipes. UIKit/AppKit caches currently report zero references—flagged for refresh during Phase 2.
 
 - Phase 2 – Search & Ranking Improvements *(Completed 2025-10-20 19:46Z · Owner: Codex agent)*  
@@ -16,7 +16,7 @@
   - Prototype relevance scoring tweaks against recorded transcripts; document precision/recall deltas before rollout.
   - ✅ Tokenization now splits camelCase identifiers and additional punctuation, improving index coverage for symbols like `NavigationSplitView` and `NSAttributedString`.
   - ✅ Query planner adds synonym expansion (list↔table, textfield↔input, etc.), phrase/compact matching, and knowledge-driven boosts; telemetry metadata now reports `avgScore`, `synonymMatches`, and `fullMatchCount` per request.
-  - ✅ Verified via `cargo test -p apple-docs-core` that existing design overlay and search parity tests remain green; manual telemetry spot-checks show synonym hits recorded for queries like “text input”.
+  - ✅ Verified via `cargo test -p docs-mcp-core` that existing design overlay and search parity tests remain green; manual telemetry spot-checks show synonym hits recorded for queries like “text input”.
 
 - Phase 3 – Documentation Summaries & Snippet Harvesting *(Completed 2025-10-20 20:05Z · Owner: Codex agent)*  
   - Enhance `get_documentation` to extract parameter tables, relationships, and referenced sample code snippets into the quick summary.

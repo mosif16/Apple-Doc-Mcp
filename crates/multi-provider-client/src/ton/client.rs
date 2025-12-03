@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, instrument};
 
 use super::types::{OpenApiSpec, TonCategory, TonEndpoint, TonEndpointSummary, TonTechnology};
-use apple_docs_client::cache::{DiskCache, MemoryCache};
+use docs_mcp_client::cache::{DiskCache, MemoryCache};
 
 const OPENAPI_URL: &str = "https://raw.githubusercontent.com/tonkeeper/opentonapi/master/api/openapi.yml";
 const CACHE_KEY: &str = "ton_openapi_spec";

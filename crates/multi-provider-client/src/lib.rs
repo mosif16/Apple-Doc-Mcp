@@ -7,7 +7,7 @@ pub mod types;
 use std::collections::HashMap;
 
 use anyhow::Result;
-use apple_docs_client::AppleDocsClient;
+use docs_mcp_client::AppleDocsClient;
 
 use cocoon::CocoonClient;
 use rust::RustClient;

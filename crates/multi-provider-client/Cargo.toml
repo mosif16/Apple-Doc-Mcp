@@ -8,7 +8,7 @@ authors.workspace = true
 description = "Multi-provider documentation client for Apple, Telegram, TON, and Cocoon"
 
 [dependencies]
-apple-docs-client = { path = "../apple-docs-client" }
+docs-mcp-client = { path = "../docs-mcp-client" }
 anyhow.workspace = true
 reqwest.workspace = true
 serde.workspace = true

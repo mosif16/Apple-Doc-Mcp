@@ -1,0 +1,50 @@
+use std::path::PathBuf;
+
+use anyhow::Result;
+use docs_mcp_core::{run, ServerConfig, ServerMode};
+
+const CACHE_DIR_ENV: &str = "DOCSMCP_CACHE_DIR";
+const HEADLESS_ENV: &str = "DOCSMCP_HEADLESS";
+
+/// Launches the MCP server using environment-informed defaults.
+///
+/// Phase 2 provides scaffolding only; the concrete implementation lands in later phases.
+pub async fn run_server() -> Result<()> {
+    let config = ServerConfig {
+        cache_dir: resolve_cache_dir(),
+        mode: resolve_mode(),
+        ..Default::default()
+    };
+
+    tracing::info!(
+        target: "docs_mcp",
+        cache_dir = ?config.cache_dir,
+        mode = ?config.mode,
+        "Starting MCP server"
+    );
+    run(config).await
+}
+
+fn resolve_cache_dir() -> Option<PathBuf> {
+    std::env::var_os(CACHE_DIR_ENV).map(PathBuf::from)
+}
+
+fn resolve_mode() -> ServerMode {
+    match std::env::var_os(HEADLESS_ENV) {
+        Some(value) if value == "1" || value.eq_ignore_ascii_case("true") => ServerMode::Headless,
+        _ => ServerMode::Stdio,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn run_server_scaffold_succeeds() {
+        std::env::set_var(CACHE_DIR_ENV, "/tmp/docs-mcp-cache");
+        std::env::set_var(HEADLESS_ENV, "1");
+        let result = run_server().await;
+        assert!(result.is_ok());
+    }
+}

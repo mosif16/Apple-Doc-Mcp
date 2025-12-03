@@ -12,5 +12,5 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    apple_docs_mcp::run_server().await
+    docs_mcp::run_server().await
 }

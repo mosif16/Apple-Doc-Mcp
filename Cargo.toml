@@ -1,9 +1,9 @@
 [workspace]
 members = [
 	"apps/cli",
-	"crates/apple-docs-client",
-	"crates/apple-docs-core",
-	"crates/apple-docs-mcp",
+	"crates/docs-mcp-client",
+	"crates/docs-mcp-core",
+	"crates/docs-mcp",
 	"crates/multi-provider-client"
 ]
 resolver = "2"
@@ -41,4 +41,4 @@ unwrap_used = "warn"
 expect_used = "warn"
 
 [workspace.metadata]
-app_docs_cache_dir_env = "APPLEDOC_CACHE_DIR"
+docs_mcp_cache_dir_env = "DOCSMCP_CACHE_DIR"

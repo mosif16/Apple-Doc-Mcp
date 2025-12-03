@@ -21,10 +21,10 @@ cargo build --release
 cargo test
 
 # Run tests for a specific crate
-cargo test -p apple-docs-core
+cargo test -p docs-mcp-core
 
 # Run the server (for local development)
-cargo run -p apple-docs-cli
+cargo run -p docs-mcp-cli
 
 # Lint
 cargo clippy --all-targets
@@ -35,11 +35,11 @@ cargo clippy --all-targets
 ### Workspace Structure
 
 ```
-├── apps/cli/                    # CLI entry point (apple-docs-cli binary)
+├── apps/cli/                    # CLI entry point (docs-mcp-cli binary)
 ├── crates/
-│   ├── apple-docs-client/       # HTTP client for Apple's documentation API
-│   ├── apple-docs-core/         # Core logic: tools, state, services, transport
-│   ├── apple-docs-mcp/          # MCP protocol bootstrap and config resolution
+│   ├── docs-mcp-client/       # HTTP client for Apple's documentation API
+│   ├── docs-mcp-core/         # Core logic: tools, state, services, transport
+│   ├── docs-mcp/          # MCP protocol bootstrap and config resolution
 │   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, and Rust APIs
 │       ├── src/
 │       │   ├── telegram/        # Telegram Bot API client
@@ -52,11 +52,11 @@ cargo clippy --all-targets
 
 ### Crate Responsibilities
 
-- **apple-docs-client**: Fetches and caches documentation from `developer.apple.com/tutorials/data`. Uses two-tier caching (memory TTL + disk persistence). Key types: `AppleDocsClient`, `Technology`, `FrameworkData`, `SymbolData`.
+- **docs-mcp-client**: Fetches and caches documentation from `developer.apple.com/tutorials/data`. Uses two-tier caching (memory TTL + disk persistence). Key types: `AppleDocsClient`, `Technology`, `FrameworkData`, `SymbolData`.
 
-- **apple-docs-core**: Contains all MCP tool implementations, application state (`AppContext`, `ServerState`), and the stdio transport layer. Tools are registered via `tools::register_tools()`.
+- **docs-mcp-core**: Contains all MCP tool implementations, application state (`AppContext`, `ServerState`), and the stdio transport layer. Tools are registered via `tools::register_tools()`.
 
-- **apple-docs-mcp**: Thin wrapper that resolves environment config (`APPLEDOC_CACHE_DIR`, `APPLEDOC_HEADLESS`) and launches the core server.
+- **docs-mcp**: Thin wrapper that resolves environment config (`DOCSMCP_CACHE_DIR`, `DOCSMCP_HEADLESS`) and launches the core server.
 
 - **multi-provider-client**: HTTP clients for non-Apple documentation providers:
   - `TelegramClient`: Telegram Bot API methods and types from `core.telegram.org`
@@ -90,17 +90,21 @@ Each tool dispatches to the appropriate provider based on `active_provider` stat
 
 ### MCP Tools
 
-Seven tools exposed via MCP (`crates/apple-docs-core/src/tools/`):
+**Single unified tool** exposed via MCP (`crates/docs-mcp-core/src/tools/query.rs`):
 
-| Tool | Purpose | Programmatic Calling |
-|------|---------|---------------------|
-| `discover_technologies` | Browse/filter frameworks from all providers | Enabled |
-| `choose_technology` | Select active framework for subsequent searches | - |
-| `current_technology` | Show currently selected framework | - |
-| `search_symbols` | Fuzzy keyword search within active framework or globally | Enabled |
-| `get_documentation` | Retrieve symbol documentation by path | Enabled |
-| `how_do_i` | Get guided recipes for common tasks | - |
-| `batch_documentation` | Fetch docs for multiple symbols in one call | Enabled |
+| Tool | Purpose | Key Features |
+|------|---------|--------------|
+| `query` | Unified documentation search engine | • Natural language query parsing<br>• Automatic provider/technology detection<br>• Intelligent search with synonym expansion<br>• Returns structured context with code samples<br>• Combines search + documentation fetching |
+
+The `query` tool acts as an intelligent entry point that:
+1. Parses natural language queries to extract intent (how-to, reference, search)
+2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon)
+3. Auto-selects the relevant technology/framework
+4. Executes optimized search across the detected provider
+5. Fetches detailed documentation for top results
+6. Returns structured, AI-ready context
+
+**Legacy tools** (`discover_technologies`, `choose_technology`, `search_symbols`, etc.) remain in the codebase for reference but are not exposed via MCP.
 
 ### Provider-Specific Features
 
@@ -131,27 +135,46 @@ Seven tools exposed via MCP (`crates/apple-docs-core/src/tools/`):
 - Search index parsing from rustdoc
 - Module and symbol documentation
 
-### Advanced Tool Use Features
+### Unified Query Tool Features
 
-This server implements Anthropic's Advanced Tool Use patterns for improved AI agent performance:
+The `query` tool implements advanced natural language processing:
 
-#### Tool Use Examples (`inputExamples`)
-Each tool includes usage examples that help Claude understand parameter combinations:
+#### Natural Language Query Parsing
+Automatically extracts intent, provider, technology, and keywords from queries:
+```rust
+// Example: "how to use SwiftUI NavigationStack"
+QueryIntent {
+    query_type: HowTo,
+    provider: Some(Apple),
+    technology: Some("swiftui"),
+    keywords: ["navigationstack"]
+}
+```
+
+#### Provider Auto-Detection
+Intelligently detects the target provider from query context:
+- **Apple**: SwiftUI, UIKit, iOS, macOS keywords + 50+ framework names
+- **Rust**: std, tokio, serde, and other popular crate names
+- **Telegram**: bot, sendmessage, telegram, webhook keywords
+- **TON**: blockchain, wallet, jetton, tonapi keywords
+- **Cocoon**: confidential computing, TDX keywords
+
+#### Query Type Classification
+Three query types with specialized handling:
+- **HowTo**: Recipes and guided steps with knowledge base tips
+- **Reference**: Detailed documentation with code samples
+- **Search**: General symbol search with synonym expansion
+
+#### Tool Use Examples
+The query tool includes diverse usage examples for natural language understanding:
 ```rust
 input_examples: Some(vec![
-    json!({"query": "Button"}),
-    json!({"query": "NavigationStack", "maxResults": 10}),
-    json!({"query": "animation", "symbolType": "struct", "scope": "global"}),
+    json!({"query": "how to use SwiftUI NavigationStack"}),
+    json!({"query": "Rust tokio async task spawning"}),
+    json!({"query": "Telegram Bot API sendMessage parameters"}),
+    json!({"query": "CoreData fetch request predicates", "maxResults": 5}),
 ])
 ```
-**Impact**: +18 points accuracy on complex parameter formatting.
-
-#### Programmatic Tool Calling (`allowedCallers`)
-Tools marked with `allowed_callers: ["code_execution_20250825"]` enable Claude to orchestrate via code:
-```rust
-allowed_callers: Some(vec!["code_execution_20250825".to_string()])
-```
-**Impact**: 37% token reduction, 95% fewer inference passes for batch operations.
 
 ### ToolDefinition Structure
 
@@ -173,14 +196,15 @@ pub struct ToolDefinition {
 
 ### Search System
 
-`search_symbols` uses sophisticated ranking (in `tools/search_symbols.rs`):
-- Token matching with camelCase splitting
-- Synonym expansion (e.g., "list" -> "table", "collection")
-- Abbreviation expansion (e.g., "nav" -> "navigation")
-- Typo tolerance via edit distance
-- Symbol kind boosting (structs/classes rank higher)
-- Knowledge base and design guidance overlays
-- Provider-specific search dispatch
+The unified `query` tool uses sophisticated ranking (in `tools/query.rs`):
+- **Token matching**: camelCase splitting and multi-token queries
+- **Synonym expansion**: e.g., "list" → "table", "collection", "tableview"
+- **Natural language parsing**: extracts intent (how-to, reference, search)
+- **Provider auto-detection**: routes to appropriate search backend
+- **Smart scoring**: exact title match (15pts), abstract match (5pts), token match (2pts)
+- **Knowledge base overlays**: tips and design guidance for Apple symbols
+- **Code sample extraction**: automatically fetches and includes example code
+- **Related APIs**: surfaces 5 related symbols for context
 
 ### Caching Strategy
 
@@ -199,24 +223,27 @@ All providers use two-tier caching:
 
 | Variable | Purpose |
 |----------|---------|
-| `APPLEDOC_CACHE_DIR` | Override disk cache location |
-| `APPLEDOC_HEADLESS` | Set to `1` or `true` to skip stdio transport (testing) |
+| `DOCSMCP_CACHE_DIR` | Override disk cache location |
+| `DOCSMCP_HEADLESS` | Set to `1` or `true` to skip stdio transport (testing) |
 | `RUST_LOG` | Control tracing output (e.g., `info`, `debug`) |
 
 ## Testing the MCP Server
 
 ```bash
 # Test MCP handshake and tools/list
-printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}\n' | ./target/release/apple-docs-cli
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}\n' | ./target/release/docs-mcp-cli
 
-# Test Apple provider
-printf '...\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"discover_technologies","arguments":{"provider":"apple"}},"id":3}\n' | ./target/release/apple-docs-cli
+# Test unified query tool with Apple/SwiftUI
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"SwiftUI Button styling"}},"id":3}\n' | ./target/release/docs-mcp-cli
 
-# Test Rust provider
-printf '...\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"discover_technologies","arguments":{"provider":"rust"}},"id":3}\n' | ./target/release/apple-docs-cli
+# Test query with Rust
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"tokio spawn async task"}},"id":3}\n' | ./target/release/docs-mcp-cli
 
-# Test all providers
-printf '...\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"discover_technologies","arguments":{"provider":"all"}},"id":3}\n' | ./target/release/apple-docs-cli
+# Test query with Telegram
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"telegram bot sendMessage"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test how-to query
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"how to use SwiftUI NavigationStack"}},"id":3}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## Adding a New Provider
@@ -224,23 +251,24 @@ printf '...\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"discover_t
 1. Create a new module in `crates/multi-provider-client/src/<provider>/`
    - `mod.rs` - exports
    - `types.rs` - provider-specific data models
-   - `client.rs` - HTTP client with caching
+   - `client.rs` - HTTP client with caching implementing `search()` and `get_documentation()` methods
 
 2. Update `crates/multi-provider-client/src/types.rs`:
    - Add variant to `ProviderType` enum
    - Add variant to `TechnologyKind` enum
-   - Add variant to `SymbolContent` enum
+   - Add variant to `SymbolContent` enum (if needed)
    - Add `from_<provider>()` conversion methods
 
 3. Update `crates/multi-provider-client/src/lib.rs`:
    - Add client to `ProviderClients` struct
+   - Initialize client in `ProviderClients::new()`
 
-4. Update tools in `crates/apple-docs-core/src/tools/`:
-   - `discover.rs` - add provider filtering
-   - `choose_technology.rs` - add provider handler
-   - `search_symbols.rs` - add provider search
-   - `get_documentation.rs` - add provider docs
-   - `batch_documentation.rs` - add provider batch
+4. Update the unified query tool in `crates/docs-mcp-core/src/tools/query.rs`:
+   - Add provider keywords to detection lists (`<PROVIDER>_KEYWORDS`)
+   - Update `detect_provider_and_technology()` to detect your provider
+   - Add `search_<provider>()` function implementing search logic
+   - Add match arm in `execute_search_query()` to route to your search function
+   - Update `resolve_technology()` to handle technology selection for your provider
 
 ## Maintenance Protocol
 

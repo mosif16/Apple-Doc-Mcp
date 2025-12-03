@@ -10,7 +10,7 @@ use tracing::{debug, instrument};
 use super::types::{
     TelegramApiSpec, TelegramCategory, TelegramCategoryItem, TelegramItem, TelegramTechnology,
 };
-use apple_docs_client::cache::{DiskCache, MemoryCache};
+use docs_mcp_client::cache::{DiskCache, MemoryCache};
 
 const SPEC_URL: &str =
     "https://raw.githubusercontent.com/PaulSonOfLars/telegram-bot-api-spec/main/api.json";
@@ -202,30 +202,81 @@ impl TelegramClient {
         let spec = self.get_spec().await?;
         let query_lower = query.to_lowercase();
 
-        let mut results: Vec<TelegramItem> = Vec::new();
+        // Split query into individual keywords for better matching
+        let keywords: Vec<&str> = query_lower
+            .split(|c: char| c.is_whitespace() || c == '-' || c == '_')
+            .filter(|s| !s.is_empty() && s.len() > 1)
+            .collect();
+
+        let mut scored_results: Vec<(i32, TelegramItem)> = Vec::new();
 
         // Search methods
         for (name, method) in &spec.methods {
-            if name.to_lowercase().contains(&query_lower)
-                || method
-                    .description
-                    .iter()
-                    .any(|d| d.to_lowercase().contains(&query_lower))
-            {
-                results.push(TelegramItem::from_method(name, method));
+            let name_lower = name.to_lowercase();
+            let description_text = method.description.join(" ").to_lowercase();
+
+            let mut score = 0i32;
+            for keyword in &keywords {
+                // Exact name match gets highest score
+                if name_lower == *keyword {
+                    score += 50;
+                }
+                // Name contains keyword
+                else if name_lower.contains(keyword) {
+                    score += 20;
+                }
+                // Description contains keyword
+                if description_text.contains(keyword) {
+                    score += 5;
+                }
+                // Parameter names contain keyword
+                for field in &method.fields {
+                    if field.name.to_lowercase().contains(keyword) {
+                        score += 3;
+                    }
+                }
+            }
+
+            if score > 0 {
+                scored_results.push((score, TelegramItem::from_method(name, method)));
             }
         }
 
         // Search types
         for (name, t) in &spec.types {
-            if name.to_lowercase().contains(&query_lower)
-                || t.description
-                    .iter()
-                    .any(|d| d.to_lowercase().contains(&query_lower))
-            {
-                results.push(TelegramItem::from_type(name, t));
+            let name_lower = name.to_lowercase();
+            let description_text = t.description.join(" ").to_lowercase();
+
+            let mut score = 0i32;
+            for keyword in &keywords {
+                // Exact name match gets highest score
+                if name_lower == *keyword {
+                    score += 50;
+                }
+                // Name contains keyword
+                else if name_lower.contains(keyword) {
+                    score += 20;
+                }
+                // Description contains keyword
+                if description_text.contains(keyword) {
+                    score += 5;
+                }
+                // Field names contain keyword
+                for field in &t.fields {
+                    if field.name.to_lowercase().contains(keyword) {
+                        score += 3;
+                    }
+                }
+            }
+
+            if score > 0 {
+                scored_results.push((score, TelegramItem::from_type(name, t)));
             }
         }
+
+        // Sort by score (highest first) and return items
+        scored_results.sort_by(|a, b| b.0.cmp(&a.0));
+        let results = scored_results.into_iter().map(|(_, item)| item).collect();
 
         Ok(results)
     }

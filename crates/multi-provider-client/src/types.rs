@@ -74,7 +74,7 @@ pub enum TechnologyKind {
 }
 
 impl UnifiedTechnology {
-    pub fn from_apple(tech: apple_docs_client::types::Technology) -> Self {
+    pub fn from_apple(tech: docs_mcp_client::types::Technology) -> Self {
         let description = tech
             .r#abstract
             .iter()
@@ -163,7 +163,7 @@ pub struct UnifiedSection {
 }
 
 impl UnifiedFrameworkData {
-    pub fn from_apple(data: apple_docs_client::types::FrameworkData) -> Self {
+    pub fn from_apple(data: docs_mcp_client::types::FrameworkData) -> Self {
         let description = data
             .r#abstract
             .iter()
@@ -362,7 +362,7 @@ pub struct TonParameter {
 }
 
 impl UnifiedSymbolData {
-    pub fn from_apple(data: apple_docs_client::types::SymbolData) -> Self {
+    pub fn from_apple(data: docs_mcp_client::types::SymbolData) -> Self {
         let description = data
             .r#abstract
             .iter()

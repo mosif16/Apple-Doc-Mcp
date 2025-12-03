@@ -11,7 +11,7 @@ use super::types::{
     extract_markdown_summary, extract_markdown_title, CocoonDocument, CocoonDocumentSummary,
     CocoonSection, CocoonTechnology, GitHubContent, COCOON_SECTIONS,
 };
-use apple_docs_client::cache::{DiskCache, MemoryCache};
+use docs_mcp_client::cache::{DiskCache, MemoryCache};
 
 const GITHUB_API_BASE: &str = "https://api.github.com/repos/TelegramMessenger/cocoon/contents";
 const RAW_CONTENT_BASE: &str =
@@ -176,25 +176,30 @@ impl CocoonClient {
             .find(|(id, _, _)| *id == section_id)
             .ok_or_else(|| anyhow::anyhow!("Cocoon section not found: {identifier}"))?;
 
-        // Try to list documents in the section
-        let path = format!("docs/{section_id}");
-        let contents = self.list_contents(&path).await.unwrap_or_default();
+        // The Cocoon repo has flat files at docs/*.md, not subdirectories
+        // Look for docs/{section_id}.md as the main document for this section
+        let file_path = format!("docs/{section_id}.md");
 
-        let documents: Vec<CocoonDocumentSummary> = contents
-            .into_iter()
-            .filter(|c| c.content_type == "file" && c.name.ends_with(".md"))
-            .map(|c| CocoonDocumentSummary {
-                path: c.path.clone(),
-                title: c
-                    .name
-                    .strip_suffix(".md")
-                    .unwrap_or(&c.name)
-                    .replace('-', " ")
-                    .replace('_', " "),
-                summary: String::new(), // Would need to fetch content for real summary
-                url: c.html_url,
-            })
-            .collect();
+        let mut documents = Vec::new();
+
+        // Try to fetch the section's main document
+        if let Ok(content) = self.fetch_file(&file_path).await {
+            let doc_title = extract_markdown_title(&content);
+            let summary = extract_markdown_summary(&content);
+
+            documents.push(CocoonDocumentSummary {
+                path: file_path.clone(),
+                title: if doc_title.is_empty() {
+                    title.to_string()
+                } else {
+                    doc_title
+                },
+                summary,
+                url: format!(
+                    "https://github.com/TelegramMessenger/cocoon/blob/main/{file_path}"
+                ),
+            });
+        }
 
         Ok(CocoonSection {
             identifier: format!("cocoon:{section_id}"),
@@ -236,16 +241,48 @@ impl CocoonClient {
     #[instrument(name = "cocoon_client.search", skip(self))]
     pub async fn search(&self, query: &str) -> Result<Vec<CocoonDocumentSummary>> {
         let query_lower = query.to_lowercase();
+        let query_terms: Vec<&str> = query_lower.split_whitespace().collect();
         let mut results = Vec::new();
 
-        // Search through all sections
-        for (section_id, _, _) in COCOON_SECTIONS {
-            let section = self.get_section(&format!("cocoon:{section_id}")).await?;
-            for doc in section.documents {
-                if doc.title.to_lowercase().contains(&query_lower)
-                    || doc.summary.to_lowercase().contains(&query_lower)
-                {
-                    results.push(doc);
+        // List all files in the docs directory
+        let contents = self.list_contents("docs").await.unwrap_or_default();
+
+        for item in contents {
+            // Only process markdown files
+            if item.content_type != "file" || !item.name.ends_with(".md") {
+                continue;
+            }
+
+            // Fetch content to get title and summary for searching
+            if let Ok(content) = self.fetch_file(&item.path).await {
+                let title = extract_markdown_title(&content);
+                let summary = extract_markdown_summary(&content);
+                let content_lower = content.to_lowercase();
+                let title_lower = title.to_lowercase();
+                let summary_lower = summary.to_lowercase();
+
+                // Check if any query term matches
+                let matches = query_terms.iter().any(|term| {
+                    title_lower.contains(term)
+                        || summary_lower.contains(term)
+                        || content_lower.contains(term)
+                });
+
+                if matches {
+                    results.push(CocoonDocumentSummary {
+                        path: item.path.clone(),
+                        title: if title.is_empty() {
+                            item.name
+                                .strip_suffix(".md")
+                                .unwrap_or(&item.name)
+                                .replace('-', " ")
+                                .replace('_', " ")
+                        } else {
+                            title
+                        },
+                        summary,
+                        url: item.html_url.clone(),
+                    });
                 }
             }
         }
