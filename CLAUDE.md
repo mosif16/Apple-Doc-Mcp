@@ -14,6 +14,7 @@ Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that prov
 - **Web Frameworks**: React, Next.js, and Node.js documentation
 - **MLX**: Apple's machine learning framework for Apple Silicon (Swift and Python)
 - **Hugging Face**: Transformers library and swift-transformers for LLM/AI development
+- **QuickNode**: Solana blockchain RPC documentation (HTTP methods, WebSocket, Marketplace add-ons)
 
 ## Build Commands
 
@@ -44,7 +45,7 @@ cargo clippy --all-targets
 │   ├── docs-mcp-client/       # HTTP client for Apple's documentation API
 │   ├── docs-mcp-core/         # Core logic: tools, state, services, transport
 │   ├── docs-mcp/          # MCP protocol bootstrap and config resolution
-│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, and Hugging Face APIs
+│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, Hugging Face, and QuickNode APIs
 │       ├── src/
 │       │   ├── telegram/        # Telegram Bot API client
 │       │   ├── ton/             # TON blockchain API client
@@ -54,6 +55,7 @@ cargo clippy --all-targets
 │       │   ├── web_frameworks/  # React, Next.js, Node.js documentation client
 │       │   ├── mlx/             # MLX ML framework client (Swift + Python)
 │       │   ├── huggingface/     # Hugging Face transformers client
+│       │   ├── quicknode/       # QuickNode Solana RPC documentation client
 │       │   ├── types.rs         # Unified types across all providers
 │       │   └── lib.rs           # ProviderClients aggregation
 ```
@@ -75,6 +77,7 @@ cargo clippy --all-targets
   - `WebFrameworksClient`: React, Next.js, Node.js documentation with example extraction
   - `MlxClient`: MLX ML framework documentation (Swift DocC + Python Sphinx) from `ml-explore.github.io`
   - `HuggingFaceClient`: Transformers and swift-transformers documentation from `huggingface.co`
+  - `QuickNodeClient`: Solana RPC documentation from `quicknode.com/docs/solana`
 
 ### Provider Architecture
 
@@ -91,6 +94,7 @@ pub enum ProviderType {
     WebFrameworks,
     Mlx,
     HuggingFace,
+    QuickNode,
 }
 
 pub struct ProviderClients {
@@ -103,6 +107,7 @@ pub struct ProviderClients {
     pub web_frameworks: WebFrameworksClient,
     pub mlx: MlxClient,
     pub huggingface: HuggingFaceClient,
+    pub quicknode: QuickNodeClient,
 }
 ```
 
@@ -179,6 +184,12 @@ The `query` tool acts as an intelligent entry point that:
 - LLM model families: GPT, LLaMA, BERT, T5, Whisper, CLIP, etc.
 - Model card documentation and usage patterns
 
+#### QuickNode (Solana)
+- **HTTP Methods**: 50+ JSON-RPC methods (getAccountInfo, getBalance, sendTransaction, etc.)
+- **WebSocket Methods**: Real-time subscriptions (accountSubscribe, logsSubscribe, etc.)
+- **Marketplace Add-ons**: JITO bundles, Metaplex DAS API, Yellowstone gRPC
+- Solana-specific documentation with code examples
+
 ### Unified Query Tool Features
 
 The `query` tool implements advanced natural language processing:
@@ -208,6 +219,7 @@ Intelligently detects the target provider from query context:
 - **Node.js**: nodejs, node, fs, path, http, stream keywords
 - **MLX**: mlx, mlxarray, mlxnn, apple silicon, ml-explore keywords
 - **Hugging Face**: huggingface, transformers, automodel, autotokenizer, swift-transformers keywords
+- **QuickNode**: quicknode, solana, getaccountinfo, getbalance, lamports, pubkey keywords
 
 #### Query Type Classification
 Three query types with specialized handling:
@@ -229,6 +241,8 @@ input_examples: Some(vec![
     json!({"query": "Node.js fs readFile"}),
     json!({"query": "MLX array operations Swift"}),
     json!({"query": "Hugging Face AutoModel from_pretrained"}),
+    json!({"query": "Solana getAccountInfo"}),
+    json!({"query": "QuickNode getBalance"}),
 ])
 ```
 
@@ -281,6 +295,7 @@ All providers use two-tier caching:
 | MLX Swift docs | 1h | 24h |
 | MLX Python docs | 1h | 24h |
 | Hugging Face docs | 1h | 24h |
+| QuickNode methods | 30min | 24h |
 
 ## Environment Variables
 
@@ -325,6 +340,9 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test query with Hugging Face
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Hugging Face AutoModel from_pretrained"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with QuickNode (Solana)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Solana getAccountInfo"}},"id":3}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## Adding a New Provider

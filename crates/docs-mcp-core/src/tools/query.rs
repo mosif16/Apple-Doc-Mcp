@@ -246,6 +246,26 @@ static HUGGINGFACE_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
+/// QuickNode / Solana keywords
+static QUICKNODE_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        "quicknode", "solana", "spl", "lamports", "pubkey",
+        // HTTP methods
+        "getaccountinfo", "getbalance", "getblock", "getblockheight", "gettransaction",
+        "sendtransaction", "simulatetransaction", "getlatestblockhash", "getslot",
+        "getsignaturestatuses", "getsignaturesforaddress", "gettokenaccountbalance",
+        "gettokenaccountsbyowner", "getprogramaccounts", "getmultipleaccounts",
+        "requestairdrop", "getepochinfo", "getvoteaccounts", "getclusterNodes",
+        // WebSocket methods
+        "accountsubscribe", "programsubscribe", "logssubscribe", "slotsubscribe",
+        "blocksubscribe", "signaturesubscribe", "rootsubscribe",
+        // Marketplace add-ons
+        "jito", "metaplex", "das", "yellowstone", "geyser", "grpc",
+        // General Solana terms
+        "devnet", "mainnet", "testnet", "anchor", "serum", "raydium", "jupiter",
+    ]
+});
+
 /// How-to query patterns
 static HOWTO_PATTERNS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(how\s+(do\s+i|to|can\s+i)|what'?s?\s+the\s+(best\s+)?way\s+to|implement|create|make|build|add|show\s+me\s+how)").unwrap()
@@ -288,6 +308,8 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"query": "Rust std HashMap insert"}),
                 json!({"query": "Telegram Bot API sendMessage"}),
                 json!({"query": "how to implement CoreData fetch requests"}),
+                json!({"query": "Solana getAccountInfo"}),
+                json!({"query": "QuickNode getBalance"}),
             ]),
             allowed_callers: None,
         },
@@ -461,6 +483,21 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
                 "hf:transformers"
             };
             return (Some(ProviderType::HuggingFace), Some(tech.to_string()));
+        }
+    }
+
+    // Check for QuickNode/Solana keywords
+    for keyword in QUICKNODE_KEYWORDS.iter() {
+        if contains_word(query, keyword) || query.contains(keyword) {
+            // Determine category based on query content
+            let tech = if query.contains("websocket") || query.contains("subscribe") {
+                "quicknode:solana:websocket"
+            } else if query.contains("jito") || query.contains("metaplex") || query.contains("das") || query.contains("yellowstone") {
+                "quicknode:solana:marketplace"
+            } else {
+                "quicknode:solana:http"
+            };
+            return (Some(ProviderType::QuickNode), Some(tech.to_string()));
         }
     }
 
@@ -672,6 +709,28 @@ async fn resolve_technology(
                 *context.state.active_unified_technology.write().await = Some(unified);
                 Ok((*provider, tech_name.to_string()))
             }
+            ProviderType::QuickNode => {
+                // Parse category from tech_id (e.g., "quicknode:solana:http" -> "Solana HTTP Methods")
+                let category_name = tech_id
+                    .strip_prefix("quicknode:solana:")
+                    .map(|c| match c {
+                        "http" => "Solana HTTP Methods",
+                        "websocket" => "Solana WebSocket Methods",
+                        "marketplace" => "Solana Marketplace Add-ons",
+                        _ => "Solana HTTP Methods",
+                    })
+                    .unwrap_or("Solana HTTP Methods");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: category_name.to_string(),
+                    description: format!("QuickNode {} documentation", category_name),
+                    provider: ProviderType::QuickNode,
+                    url: Some("https://www.quicknode.com/docs/solana".to_string()),
+                    kind: multi_provider_client::types::TechnologyKind::QuickNodeApi,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, category_name.to_string()))
+            }
         }
     } else {
         // No provider detected - check if there's an active technology, otherwise default to Apple/SwiftUI
@@ -816,6 +875,7 @@ async fn execute_search_query(
         ProviderType::WebFrameworks => search_web_frameworks(context, intent, &search_query, max_results).await,
         ProviderType::Mlx => search_mlx(context, intent, &search_query, max_results).await,
         ProviderType::HuggingFace => search_huggingface(context, intent, &search_query, max_results).await,
+        ProviderType::QuickNode => search_quicknode(context, &search_query, max_results).await,
     }
 }
 
@@ -1523,6 +1583,62 @@ async fn search_huggingface(
             related_apis: Vec::new(),
             full_content,
             declaration,
+            parameters,
+        });
+    }
+
+    Ok(results)
+}
+
+/// Search QuickNode Solana documentation
+async fn search_quicknode(
+    context: &Arc<AppContext>,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    let items = match context.providers.quicknode.search(query).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "QuickNode search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full method documentation for top results
+        let (full_content, code_sample, parameters) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.quicknode.get_method(&item.name).await {
+                Ok(method) => {
+                    let code = method.examples.first().map(|e| e.code.clone());
+                    let params: Vec<(String, String)> = method
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.description.clone()))
+                        .collect();
+                    let content = if !method.description.is_empty() {
+                        Some(method.description.clone())
+                    } else {
+                        None
+                    };
+                    (content, code, params)
+                }
+                Err(_) => (Some(item.description.clone()), None, Vec::new()),
+            }
+        } else {
+            (None, None, Vec::new())
+        };
+
+        results.push(DocResult {
+            title: item.name.clone(),
+            kind: item.kind.to_string(),
+            path: item.name,
+            summary: item.description.clone(),
+            platforms: Some("QuickNode Solana".to_string()),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration: None,
             parameters,
         });
     }

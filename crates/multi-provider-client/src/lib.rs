@@ -2,6 +2,7 @@ pub mod cocoon;
 pub mod huggingface;
 pub mod mdn;
 pub mod mlx;
+pub mod quicknode;
 pub mod rust;
 pub mod telegram;
 pub mod ton;
@@ -17,6 +18,7 @@ use cocoon::CocoonClient;
 use huggingface::HuggingFaceClient;
 use mdn::MdnClient;
 use mlx::MlxClient;
+use quicknode::QuickNodeClient;
 use rust::RustClient;
 use telegram::TelegramClient;
 use ton::TonClient;
@@ -35,6 +37,7 @@ pub struct ProviderClients {
     pub web_frameworks: WebFrameworksClient,
     pub mlx: MlxClient,
     pub huggingface: HuggingFaceClient,
+    pub quicknode: QuickNodeClient,
 }
 
 impl Default for ProviderClients {
@@ -56,6 +59,7 @@ impl ProviderClients {
             web_frameworks: WebFrameworksClient::new(),
             mlx: MlxClient::new(),
             huggingface: HuggingFaceClient::new(),
+            quicknode: QuickNodeClient::new(),
         }
     }
 
@@ -63,7 +67,7 @@ impl ProviderClients {
     pub async fn get_all_technologies(
         &self,
     ) -> Result<HashMap<ProviderType, Vec<UnifiedTechnology>>> {
-        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf) = tokio::join!(
+        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf, qn) = tokio::join!(
             self.apple.get_technologies(),
             self.telegram.get_technologies(),
             self.ton.get_technologies(),
@@ -72,7 +76,8 @@ impl ProviderClients {
             self.mdn.get_technologies(),
             self.web_frameworks.get_technologies(),
             self.mlx.get_technologies(),
-            self.huggingface.get_technologies()
+            self.huggingface.get_technologies(),
+            self.quicknode.get_technologies()
         );
 
         let mut result = HashMap::new();
@@ -143,6 +148,13 @@ impl ProviderClients {
             );
         }
 
+        if let Ok(techs) = qn {
+            result.insert(
+                ProviderType::QuickNode,
+                techs.into_iter().map(UnifiedTechnology::from_quicknode).collect(),
+            );
+        }
+
         Ok(result)
     }
 
@@ -191,6 +203,10 @@ impl ProviderClients {
                 let techs = self.huggingface.get_technologies().await?;
                 Ok(techs.into_iter().map(UnifiedTechnology::from_huggingface).collect())
             }
+            ProviderType::QuickNode => {
+                let techs = self.quicknode.get_technologies().await?;
+                Ok(techs.into_iter().map(UnifiedTechnology::from_quicknode).collect())
+            }
         }
     }
 
@@ -236,6 +252,10 @@ impl ProviderClients {
             ProviderType::HuggingFace => {
                 let data = self.huggingface.get_category(identifier).await?;
                 Ok(UnifiedFrameworkData::from_huggingface(data))
+            }
+            ProviderType::QuickNode => {
+                let data = self.quicknode.get_category(identifier).await?;
+                Ok(UnifiedFrameworkData::from_quicknode(data))
             }
         }
     }
@@ -303,6 +323,10 @@ impl ProviderClients {
                 let slug = parts.get(1).unwrap_or(&path);
                 let data = self.huggingface.get_article(slug, technology).await?;
                 Ok(UnifiedSymbolData::from_huggingface(data))
+            }
+            ProviderType::QuickNode => {
+                let data = self.quicknode.get_method(path).await?;
+                Ok(UnifiedSymbolData::from_quicknode(data))
             }
         }
     }

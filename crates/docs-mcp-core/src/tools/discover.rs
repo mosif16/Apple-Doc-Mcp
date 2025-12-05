@@ -383,6 +383,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             TechnologyKind::WebFramework => " [Framework]",
             TechnologyKind::MlxFramework => " [ML]",
             TechnologyKind::HfLibrary => " [AI]",
+            TechnologyKind::QuickNodeApi => " [Solana]",
         };
         title_line.push_str(kind_badge);
 
@@ -445,6 +446,7 @@ fn provider_display_name(provider: &ProviderType) -> &'static str {
         ProviderType::WebFrameworks => "⚛️ Web Frameworks",
         ProviderType::Mlx => "🧠 MLX",
         ProviderType::HuggingFace => "🤗 Hugging Face",
+        ProviderType::QuickNode => "⚡ QuickNode Solana",
     }
 }
 
@@ -460,6 +462,7 @@ fn provider_sort_order(provider: &ProviderType) -> u8 {
         ProviderType::WebFrameworks => 6,
         ProviderType::Mlx => 7,
         ProviderType::HuggingFace => 8,
+        ProviderType::QuickNode => 9,
     }
 }
 
@@ -486,6 +489,7 @@ fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>)
             TechnologyKind::WebFramework => 47,
             TechnologyKind::MlxFramework => 46,
             TechnologyKind::HfLibrary => 44,
+            TechnologyKind::QuickNodeApi => 42,
         }
     };
 

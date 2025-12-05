@@ -6,6 +6,7 @@ use crate::cocoon::types::{CocoonDocument, CocoonSection, CocoonTechnology};
 use crate::huggingface::types::{HfArticle, HfCategory, HfTechnology, HfTechnologyKind};
 use crate::mdn::types::{MdnArticle, MdnCategory, MdnTechnology};
 use crate::mlx::types::{MlxArticle, MlxCategory, MlxLanguage, MlxTechnology};
+use crate::quicknode::types::{QuickNodeCategory, QuickNodeMethod, QuickNodeTechnology};
 use crate::rust::types::{RustCategory, RustItem, RustTechnology};
 use crate::telegram::types::{TelegramCategory, TelegramItem, TelegramTechnology};
 use crate::ton::types::{TonCategory, TonEndpoint, TonTechnology};
@@ -28,6 +29,8 @@ pub enum ProviderType {
     Mlx,
     /// Hugging Face - LLM models and transformers
     HuggingFace,
+    /// QuickNode - Solana blockchain RPC documentation
+    QuickNode,
 }
 
 impl ProviderType {
@@ -43,6 +46,7 @@ impl ProviderType {
             Self::WebFrameworks => "Web Frameworks",
             Self::Mlx => "MLX",
             Self::HuggingFace => "Hugging Face",
+            Self::QuickNode => "QuickNode",
         }
     }
 
@@ -58,6 +62,7 @@ impl ProviderType {
             Self::WebFrameworks => "React, Next.js, and Node.js Documentation",
             Self::Mlx => "MLX Machine Learning Framework for Apple Silicon",
             Self::HuggingFace => "Hugging Face Transformers and Model Documentation",
+            Self::QuickNode => "QuickNode Solana RPC Documentation",
         }
     }
 }
@@ -99,6 +104,8 @@ pub enum TechnologyKind {
     MlxFramework,
     /// Hugging Face library (Transformers, Hub, etc.)
     HfLibrary,
+    /// QuickNode Solana API (HTTP, WebSocket, Marketplace)
+    QuickNodeApi,
 }
 
 impl UnifiedTechnology {
@@ -205,6 +212,17 @@ impl UnifiedTechnology {
             description: tech.description,
             url: Some(tech.url),
             kind: TechnologyKind::HfLibrary,
+        }
+    }
+
+    pub fn from_quicknode(tech: QuickNodeTechnology) -> Self {
+        Self {
+            provider: ProviderType::QuickNode,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::QuickNodeApi,
         }
     }
 }
@@ -415,6 +433,28 @@ impl UnifiedFrameworkData {
             sections: vec![],
         }
     }
+
+    pub fn from_quicknode(data: QuickNodeCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.name.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(item.kind.to_string()),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::QuickNode,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
 }
 
 /// Unified symbol/item data
@@ -490,6 +530,43 @@ pub enum SymbolContent {
         examples: Vec<HfExampleInfo>,
         parameters: Vec<HfParamInfo>,
     },
+    /// QuickNode Solana RPC documentation
+    QuickNode {
+        method_kind: String,
+        parameters: Vec<QuickNodeParamInfo>,
+        returns: Option<QuickNodeReturnInfo>,
+        examples: Vec<QuickNodeExampleInfo>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuickNodeParamInfo {
+    pub name: String,
+    pub description: String,
+    pub param_type: String,
+    pub required: bool,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuickNodeReturnInfo {
+    pub type_name: String,
+    pub description: String,
+    pub fields: Vec<QuickNodeFieldInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuickNodeFieldInfo {
+    pub name: String,
+    pub field_type: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuickNodeExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -847,6 +924,58 @@ impl UnifiedSymbolData {
                     url: None,
                 })
                 .collect(),
+        }
+    }
+
+    pub fn from_quicknode(data: QuickNodeMethod) -> Self {
+        let parameters = data
+            .parameters
+            .into_iter()
+            .map(|p| QuickNodeParamInfo {
+                name: p.name,
+                description: p.description,
+                param_type: p.param_type,
+                required: p.required,
+                default_value: p.default_value,
+            })
+            .collect();
+
+        let returns = data.returns.map(|r| QuickNodeReturnInfo {
+            type_name: r.type_name,
+            description: r.description,
+            fields: r
+                .fields
+                .into_iter()
+                .map(|f| QuickNodeFieldInfo {
+                    name: f.name,
+                    field_type: f.field_type,
+                    description: f.description,
+                })
+                .collect(),
+        });
+
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| QuickNodeExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::QuickNode,
+            title: data.name,
+            description: data.description,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::QuickNode {
+                method_kind: data.kind.to_string(),
+                parameters,
+                returns,
+                examples,
+            },
+            related: vec![],
         }
     }
 }
