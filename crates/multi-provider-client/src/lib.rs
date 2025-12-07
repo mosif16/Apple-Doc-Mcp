@@ -1,3 +1,4 @@
+pub mod claude_agent_sdk;
 pub mod cocoon;
 pub mod huggingface;
 pub mod mdn;
@@ -14,6 +15,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use docs_mcp_client::AppleDocsClient;
 
+use claude_agent_sdk::ClaudeAgentSdkClient;
 use cocoon::CocoonClient;
 use huggingface::HuggingFaceClient;
 use mdn::MdnClient;
@@ -38,6 +40,7 @@ pub struct ProviderClients {
     pub mlx: MlxClient,
     pub huggingface: HuggingFaceClient,
     pub quicknode: QuickNodeClient,
+    pub claude_agent_sdk: ClaudeAgentSdkClient,
 }
 
 impl Default for ProviderClients {
@@ -60,6 +63,7 @@ impl ProviderClients {
             mlx: MlxClient::new(),
             huggingface: HuggingFaceClient::new(),
             quicknode: QuickNodeClient::new(),
+            claude_agent_sdk: ClaudeAgentSdkClient::new(),
         }
     }
 
@@ -67,7 +71,7 @@ impl ProviderClients {
     pub async fn get_all_technologies(
         &self,
     ) -> Result<HashMap<ProviderType, Vec<UnifiedTechnology>>> {
-        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf, qn) = tokio::join!(
+        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf, qn, agent_sdk) = tokio::join!(
             self.apple.get_technologies(),
             self.telegram.get_technologies(),
             self.ton.get_technologies(),
@@ -77,7 +81,8 @@ impl ProviderClients {
             self.web_frameworks.get_technologies(),
             self.mlx.get_technologies(),
             self.huggingface.get_technologies(),
-            self.quicknode.get_technologies()
+            self.quicknode.get_technologies(),
+            self.claude_agent_sdk.get_technologies()
         );
 
         let mut result = HashMap::new();
@@ -155,6 +160,16 @@ impl ProviderClients {
             );
         }
 
+        if let Ok(techs) = agent_sdk {
+            result.insert(
+                ProviderType::ClaudeAgentSdk,
+                techs
+                    .into_iter()
+                    .map(UnifiedTechnology::from_claude_agent_sdk)
+                    .collect(),
+            );
+        }
+
         Ok(result)
     }
 
@@ -207,6 +222,13 @@ impl ProviderClients {
                 let techs = self.quicknode.get_technologies().await?;
                 Ok(techs.into_iter().map(UnifiedTechnology::from_quicknode).collect())
             }
+            ProviderType::ClaudeAgentSdk => {
+                let techs = self.claude_agent_sdk.get_technologies().await?;
+                Ok(techs
+                    .into_iter()
+                    .map(UnifiedTechnology::from_claude_agent_sdk)
+                    .collect())
+            }
         }
     }
 
@@ -256,6 +278,10 @@ impl ProviderClients {
             ProviderType::QuickNode => {
                 let data = self.quicknode.get_category(identifier).await?;
                 Ok(UnifiedFrameworkData::from_quicknode(data))
+            }
+            ProviderType::ClaudeAgentSdk => {
+                let data = self.claude_agent_sdk.get_category(identifier).await?;
+                Ok(UnifiedFrameworkData::from_claude_agent_sdk(data))
             }
         }
     }
@@ -327,6 +353,18 @@ impl ProviderClients {
             ProviderType::QuickNode => {
                 let data = self.quicknode.get_method(path).await?;
                 Ok(UnifiedSymbolData::from_quicknode(data))
+            }
+            ProviderType::ClaudeAgentSdk => {
+                // Parse the path to determine language (e.g., "typescript/query" or "python/ClaudeSDKClient")
+                let parts: Vec<&str> = path.splitn(2, '/').collect();
+                let language = if parts[0].to_lowercase().contains("python") {
+                    claude_agent_sdk::types::AgentSdkLanguage::Python
+                } else {
+                    claude_agent_sdk::types::AgentSdkLanguage::TypeScript
+                };
+                let slug = parts.get(1).unwrap_or(&path);
+                let data = self.claude_agent_sdk.get_article(slug, language).await?;
+                Ok(UnifiedSymbolData::from_claude_agent_sdk(data))
             }
         }
     }

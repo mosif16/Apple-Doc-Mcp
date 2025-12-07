@@ -384,6 +384,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             TechnologyKind::MlxFramework => " [ML]",
             TechnologyKind::HfLibrary => " [AI]",
             TechnologyKind::QuickNodeApi => " [Solana]",
+            TechnologyKind::AgentSdkLibrary => " [SDK]",
         };
         title_line.push_str(kind_badge);
 
@@ -447,6 +448,7 @@ fn provider_display_name(provider: &ProviderType) -> &'static str {
         ProviderType::Mlx => "🧠 MLX",
         ProviderType::HuggingFace => "🤗 Hugging Face",
         ProviderType::QuickNode => "⚡ QuickNode Solana",
+        ProviderType::ClaudeAgentSdk => "🤖 Claude Agent SDK",
     }
 }
 
@@ -463,6 +465,7 @@ fn provider_sort_order(provider: &ProviderType) -> u8 {
         ProviderType::Mlx => 7,
         ProviderType::HuggingFace => 8,
         ProviderType::QuickNode => 9,
+        ProviderType::ClaudeAgentSdk => 10,
     }
 }
 
@@ -490,6 +493,7 @@ fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>)
             TechnologyKind::MlxFramework => 46,
             TechnologyKind::HfLibrary => 44,
             TechnologyKind::QuickNodeApi => 42,
+            TechnologyKind::AgentSdkLibrary => 43,
         }
     };
 

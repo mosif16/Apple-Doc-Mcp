@@ -95,7 +95,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         }
         ProviderType::Telegram | ProviderType::TON | ProviderType::Cocoon | ProviderType::Rust
         | ProviderType::Mdn | ProviderType::WebFrameworks | ProviderType::Mlx | ProviderType::HuggingFace
-        | ProviderType::QuickNode => {
+        | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk => {
             // For non-Apple providers, use active_unified_technology
             let unified = context
                 .state
@@ -120,8 +120,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
                 ProviderType::TON => handle_ton(&context, &active, &args).await,
                 ProviderType::Cocoon => handle_cocoon(&context, &active, &args).await,
                 ProviderType::Rust => handle_rust(&context, &active, &args).await,
-                // Mlx, HuggingFace, and QuickNode use the unified query tool, not this legacy handler
-                ProviderType::Mlx | ProviderType::HuggingFace | ProviderType::QuickNode => {
+                // Mlx, HuggingFace, QuickNode, and ClaudeAgentSdk use the unified query tool
+                ProviderType::Mlx | ProviderType::HuggingFace | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk => {
                     anyhow::bail!("Use the `query` tool for {} documentation", provider.name())
                 }
                 _ => unreachable!(),

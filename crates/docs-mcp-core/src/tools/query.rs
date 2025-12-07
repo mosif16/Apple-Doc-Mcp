@@ -266,6 +266,30 @@ static QUICKNODE_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
+/// Claude Agent SDK keywords
+static CLAUDE_AGENT_SDK_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        // SDK names
+        "claude agent sdk", "claude-agent-sdk", "agent sdk", "claudeagentsdk",
+        "claude code sdk", "claude sdk",
+        // Core API
+        "claudesdkclient", "claudeagentoptions", "claudecodeoptions",
+        // Key functions
+        "query", "mcp", "mcpservers",
+        // Hooks
+        "pretooluse", "posttooluse", "onmessage",
+        // Configuration
+        "systemprompt", "system_prompt", "maxturns", "max_turns",
+        "allowedtools", "allowed_tools", "permissionmode", "permission_mode",
+        // Python specific
+        "@tool", "create_sdk_mcp_server", "cli_path",
+        // Messages
+        "assistantmessage", "usermessage", "systemmessage", "resultmessage",
+        // Content blocks
+        "textblock", "tooluseblock", "toolresultblock",
+    ]
+});
+
 /// How-to query patterns
 static HOWTO_PATTERNS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(how\s+(do\s+i|to|can\s+i)|what'?s?\s+the\s+(best\s+)?way\s+to|implement|create|make|build|add|show\s+me\s+how)").unwrap()
@@ -283,9 +307,10 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
             description:
                 "Complete documentation retrieval in a single call. Returns full documentation \
                  content, code examples, declarations, and parameters—no follow-up calls needed. \
-                 Auto-detects provider (Apple, Rust, Telegram, TON, Cocoon) from your query. \
+                 Auto-detects provider (Apple, Rust, Telegram, TON, Cocoon, MDN, React, Next.js, \
+                 Node.js, MLX, Hugging Face, QuickNode, Claude Agent SDK) from your query. \
                  Top 5 results include complete documentation; remaining results include summaries. \
-                 Use natural language: 'SwiftUI NavigationStack', 'Rust tokio spawn', 'Telegram sendMessage'."
+                 Use natural language: 'SwiftUI NavigationStack', 'Rust tokio spawn', 'Claude Agent SDK query function'."
                     .to_string(),
             input_schema: json!({
                 "type": "object",
@@ -310,6 +335,9 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"query": "how to implement CoreData fetch requests"}),
                 json!({"query": "Solana getAccountInfo"}),
                 json!({"query": "QuickNode getBalance"}),
+                json!({"query": "Claude Agent SDK query function typescript"}),
+                json!({"query": "agent sdk python ClaudeSDKClient"}),
+                json!({"query": "Claude Agent SDK hooks PreToolUse"}),
             ]),
             allowed_callers: None,
         },
@@ -498,6 +526,22 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
                 "quicknode:solana:http"
             };
             return (Some(ProviderType::QuickNode), Some(tech.to_string()));
+        }
+    }
+
+    // Check for Claude Agent SDK keywords (before MDN since SDK uses JavaScript/TypeScript)
+    for keyword in CLAUDE_AGENT_SDK_KEYWORDS.iter() {
+        if contains_word(query, keyword) || query.contains(keyword) {
+            // Determine language based on query content
+            let tech = if query.contains("python") || query.contains("@tool") || query.contains("cli_path") {
+                "agent-sdk:python"
+            } else if query.contains("typescript") || query.contains("javascript") || query.contains("node") {
+                "agent-sdk:typescript"
+            } else {
+                // Default to TypeScript
+                "agent-sdk:typescript"
+            };
+            return (Some(ProviderType::ClaudeAgentSdk), Some(tech.to_string()));
         }
     }
 
@@ -731,6 +775,27 @@ async fn resolve_technology(
                 *context.state.active_unified_technology.write().await = Some(unified);
                 Ok((*provider, category_name.to_string()))
             }
+            ProviderType::ClaudeAgentSdk => {
+                // Parse language from tech_id (e.g., "agent-sdk:typescript" -> "Claude Agent SDK (TypeScript)")
+                let lang_name = tech_id
+                    .strip_prefix("agent-sdk:")
+                    .map(|l| match l {
+                        "typescript" => "Claude Agent SDK (TypeScript)",
+                        "python" => "Claude Agent SDK (Python)",
+                        _ => "Claude Agent SDK (TypeScript)",
+                    })
+                    .unwrap_or("Claude Agent SDK (TypeScript)");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: lang_name.to_string(),
+                    description: "Build AI agents with Claude Code capabilities".to_string(),
+                    provider: ProviderType::ClaudeAgentSdk,
+                    url: Some("https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk".to_string()),
+                    kind: multi_provider_client::types::TechnologyKind::AgentSdkLibrary,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, lang_name.to_string()))
+            }
         }
     } else {
         // No provider detected - check if there's an active technology, otherwise default to Apple/SwiftUI
@@ -849,6 +914,8 @@ async fn execute_search_query(
         "mlx", "mlxswift",
         // Hugging Face but not model names that might be search terms
         "huggingface", "hf", "transformers",
+        // Claude Agent SDK but not concepts like "query", "hook"
+        "claude", "agent", "sdk", "claudeagentsdk", "claudesdkclient",
     ];
 
     let search_keywords: Vec<&str> = intent
@@ -876,6 +943,7 @@ async fn execute_search_query(
         ProviderType::Mlx => search_mlx(context, intent, &search_query, max_results).await,
         ProviderType::HuggingFace => search_huggingface(context, intent, &search_query, max_results).await,
         ProviderType::QuickNode => search_quicknode(context, &search_query, max_results).await,
+        ProviderType::ClaudeAgentSdk => search_claude_agent_sdk(context, intent, &search_query, max_results).await,
     }
 }
 
@@ -1639,6 +1707,82 @@ async fn search_quicknode(
             related_apis: Vec::new(),
             full_content,
             declaration: None,
+            parameters,
+        });
+    }
+
+    Ok(results)
+}
+
+/// Search Claude Agent SDK documentation
+async fn search_claude_agent_sdk(
+    context: &Arc<AppContext>,
+    intent: &QueryIntent,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    use multi_provider_client::claude_agent_sdk::types::AgentSdkLanguage;
+
+    // Determine language from technology identifier
+    let language = intent
+        .technology
+        .as_ref()
+        .and_then(|t| t.strip_prefix("agent-sdk:"))
+        .map(|l| match l {
+            "python" => Some(AgentSdkLanguage::Python),
+            "typescript" => Some(AgentSdkLanguage::TypeScript),
+            _ => None,
+        })
+        .flatten();
+
+    let items = match context.providers.claude_agent_sdk.search(query, language).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "Claude Agent SDK search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full article for top results
+        let (full_content, code_sample, declaration, parameters) = if results.len() < MAX_DETAILED_DOCS {
+            match context
+                .providers
+                .claude_agent_sdk
+                .get_article(&item.path, item.language)
+                .await
+            {
+                Ok(article) => {
+                    let code = article.examples.first().map(|e| e.code.clone());
+                    let content = if !article.content.is_empty() {
+                        Some(trim_text(&article.content, MAX_CONTENT_LENGTH))
+                    } else {
+                        None
+                    };
+                    let params: Vec<(String, String)> = article
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.description.clone()))
+                        .collect();
+                    (content, code, article.declaration, params)
+                }
+                Err(_) => (Some(item.description.clone()), None, None, Vec::new()),
+            }
+        } else {
+            (None, None, None, Vec::new())
+        };
+
+        results.push(DocResult {
+            title: item.name.clone(),
+            kind: item.kind.to_string(),
+            path: item.path.clone(),
+            summary: item.description.clone(),
+            platforms: Some(format!("Claude Agent SDK ({})", item.language)),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration,
             parameters,
         });
     }

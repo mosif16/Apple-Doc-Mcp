@@ -2,6 +2,9 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::claude_agent_sdk::types::{
+    AgentSdkArticle, AgentSdkCategory, AgentSdkLanguage, AgentSdkTechnology,
+};
 use crate::cocoon::types::{CocoonDocument, CocoonSection, CocoonTechnology};
 use crate::huggingface::types::{HfArticle, HfCategory, HfTechnology, HfTechnologyKind};
 use crate::mdn::types::{MdnArticle, MdnCategory, MdnTechnology};
@@ -31,6 +34,8 @@ pub enum ProviderType {
     HuggingFace,
     /// QuickNode - Solana blockchain RPC documentation
     QuickNode,
+    /// Claude Agent SDK - TypeScript and Python SDKs for building AI agents
+    ClaudeAgentSdk,
 }
 
 impl ProviderType {
@@ -47,6 +52,7 @@ impl ProviderType {
             Self::Mlx => "MLX",
             Self::HuggingFace => "Hugging Face",
             Self::QuickNode => "QuickNode",
+            Self::ClaudeAgentSdk => "Claude Agent SDK",
         }
     }
 
@@ -63,6 +69,7 @@ impl ProviderType {
             Self::Mlx => "MLX Machine Learning Framework for Apple Silicon",
             Self::HuggingFace => "Hugging Face Transformers and Model Documentation",
             Self::QuickNode => "QuickNode Solana RPC Documentation",
+            Self::ClaudeAgentSdk => "Claude Agent SDK for TypeScript and Python",
         }
     }
 }
@@ -106,6 +113,8 @@ pub enum TechnologyKind {
     HfLibrary,
     /// QuickNode Solana API (HTTP, WebSocket, Marketplace)
     QuickNodeApi,
+    /// Claude Agent SDK library (TypeScript or Python)
+    AgentSdkLibrary,
 }
 
 impl UnifiedTechnology {
@@ -223,6 +232,17 @@ impl UnifiedTechnology {
             description: tech.description,
             url: Some(tech.url),
             kind: TechnologyKind::QuickNodeApi,
+        }
+    }
+
+    pub fn from_claude_agent_sdk(tech: AgentSdkTechnology) -> Self {
+        Self {
+            provider: ProviderType::ClaudeAgentSdk,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::AgentSdkLibrary,
         }
     }
 }
@@ -455,6 +475,28 @@ impl UnifiedFrameworkData {
             sections: vec![],
         }
     }
+
+    pub fn from_claude_agent_sdk(data: AgentSdkCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.path.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(item.kind.to_string()),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::ClaudeAgentSdk,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
 }
 
 /// Unified symbol/item data
@@ -537,6 +579,14 @@ pub enum SymbolContent {
         returns: Option<QuickNodeReturnInfo>,
         examples: Vec<QuickNodeExampleInfo>,
     },
+    /// Claude Agent SDK documentation
+    ClaudeAgentSdk {
+        language: String,
+        declaration: Option<String>,
+        documentation: String,
+        examples: Vec<AgentSdkExampleInfo>,
+        parameters: Vec<AgentSdkParamInfo>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -608,6 +658,22 @@ pub struct HfExampleInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HfParamInfo {
+    pub name: String,
+    pub description: String,
+    pub param_type: Option<String>,
+    pub default_value: Option<String>,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSdkExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSdkParamInfo {
     pub name: String,
     pub description: String,
     pub param_type: Option<String>,
@@ -976,6 +1042,55 @@ impl UnifiedSymbolData {
                 examples,
             },
             related: vec![],
+        }
+    }
+
+    pub fn from_claude_agent_sdk(data: AgentSdkArticle) -> Self {
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| AgentSdkExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        let parameters = data
+            .parameters
+            .into_iter()
+            .map(|p| AgentSdkParamInfo {
+                name: p.name,
+                description: p.description,
+                param_type: p.param_type,
+                default_value: p.default_value,
+                required: p.required,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::ClaudeAgentSdk,
+            title: data.title,
+            description: data.description,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::ClaudeAgentSdk {
+                language: data.language.to_string(),
+                declaration: data.declaration,
+                documentation: data.content,
+                examples,
+                parameters,
+            },
+            related: data
+                .related
+                .into_iter()
+                .map(|r| UnifiedReference {
+                    identifier: r.clone(),
+                    title: r,
+                    description: None,
+                    kind: None,
+                    url: None,
+                })
+                .collect(),
         }
     }
 }

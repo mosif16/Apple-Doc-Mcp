@@ -15,6 +15,7 @@ Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that prov
 - **MLX**: Apple's machine learning framework for Apple Silicon (Swift and Python)
 - **Hugging Face**: Transformers library and swift-transformers for LLM/AI development
 - **QuickNode**: Solana blockchain RPC documentation (HTTP methods, WebSocket, Marketplace add-ons)
+- **Claude Agent SDK**: TypeScript and Python SDKs for building AI agents with Claude Code capabilities
 
 ## Build Commands
 
@@ -45,7 +46,7 @@ cargo clippy --all-targets
 │   ├── docs-mcp-client/       # HTTP client for Apple's documentation API
 │   ├── docs-mcp-core/         # Core logic: tools, state, services, transport
 │   ├── docs-mcp/          # MCP protocol bootstrap and config resolution
-│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, Hugging Face, and QuickNode APIs
+│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, and Claude Agent SDK APIs
 │       ├── src/
 │       │   ├── telegram/        # Telegram Bot API client
 │       │   ├── ton/             # TON blockchain API client
@@ -56,6 +57,7 @@ cargo clippy --all-targets
 │       │   ├── mlx/             # MLX ML framework client (Swift + Python)
 │       │   ├── huggingface/     # Hugging Face transformers client
 │       │   ├── quicknode/       # QuickNode Solana RPC documentation client
+│       │   ├── claude_agent_sdk/# Claude Agent SDK client (TypeScript + Python)
 │       │   ├── types.rs         # Unified types across all providers
 │       │   └── lib.rs           # ProviderClients aggregation
 ```
@@ -78,6 +80,7 @@ cargo clippy --all-targets
   - `MlxClient`: MLX ML framework documentation (Swift DocC + Python Sphinx) from `ml-explore.github.io`
   - `HuggingFaceClient`: Transformers and swift-transformers documentation from `huggingface.co`
   - `QuickNodeClient`: Solana RPC documentation from `quicknode.com/docs/solana`
+  - `ClaudeAgentSdkClient`: Claude Agent SDK documentation for TypeScript and Python from `docs.anthropic.com`
 
 ### Provider Architecture
 
@@ -95,6 +98,7 @@ pub enum ProviderType {
     Mlx,
     HuggingFace,
     QuickNode,
+    ClaudeAgentSdk,
 }
 
 pub struct ProviderClients {
@@ -108,6 +112,7 @@ pub struct ProviderClients {
     pub mlx: MlxClient,
     pub huggingface: HuggingFaceClient,
     pub quicknode: QuickNodeClient,
+    pub claude_agent_sdk: ClaudeAgentSdkClient,
 }
 ```
 
@@ -123,7 +128,7 @@ Each tool dispatches to the appropriate provider based on `active_provider` stat
 
 The `query` tool acts as an intelligent entry point that:
 1. Parses natural language queries to extract intent (how-to, reference, search)
-2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks, MLX, Hugging Face)
+2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, Claude Agent SDK)
 3. Auto-selects the relevant technology/framework
 4. Executes optimized search across the detected provider
 5. Fetches detailed documentation for top results
@@ -190,6 +195,15 @@ The `query` tool acts as an intelligent entry point that:
 - **Marketplace Add-ons**: JITO bundles, Metaplex DAS API, Yellowstone gRPC
 - Solana-specific documentation with code examples
 
+#### Claude Agent SDK
+- **TypeScript SDK**: ClaudeClient, query function, ClaudeAgentOptions, hooks, MCP servers
+- **Python SDK**: ClaudeSDKClient, @tool decorator, async context manager, hooks
+- Core concepts: query, hooks (PreToolUse, PostToolUse), MCP server integration
+- Configuration: systemPrompt, maxTurns, allowedTools, permissionMode
+- Message types: AssistantMessage, UserMessage, SystemMessage, ResultMessage
+- Content blocks: TextBlock, ToolUseBlock, ToolResultBlock
+- Authentication: ANTHROPIC_API_KEY, Bedrock, Vertex AI
+
 ### Unified Query Tool Features
 
 The `query` tool implements advanced natural language processing:
@@ -220,6 +234,7 @@ Intelligently detects the target provider from query context:
 - **MLX**: mlx, mlxarray, mlxnn, apple silicon, ml-explore keywords
 - **Hugging Face**: huggingface, transformers, automodel, autotokenizer, swift-transformers keywords
 - **QuickNode**: quicknode, solana, getaccountinfo, getbalance, lamports, pubkey keywords
+- **Claude Agent SDK**: claude, agent sdk, claudeagentsdk, claudesdkclient, query, mcp, hooks keywords
 
 #### Query Type Classification
 Three query types with specialized handling:
@@ -243,6 +258,8 @@ input_examples: Some(vec![
     json!({"query": "Hugging Face AutoModel from_pretrained"}),
     json!({"query": "Solana getAccountInfo"}),
     json!({"query": "QuickNode getBalance"}),
+    json!({"query": "Claude Agent SDK query function typescript"}),
+    json!({"query": "agent sdk python ClaudeSDKClient"}),
 ])
 ```
 
@@ -296,6 +313,7 @@ All providers use two-tier caching:
 | MLX Python docs | 1h | 24h |
 | Hugging Face docs | 1h | 24h |
 | QuickNode methods | 30min | 24h |
+| Claude Agent SDK docs | 24h | 24h |
 
 ## Environment Variables
 
@@ -343,6 +361,12 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test query with QuickNode (Solana)
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Solana getAccountInfo"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Claude Agent SDK (TypeScript)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Claude Agent SDK query function"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Claude Agent SDK (Python)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"agent sdk python ClaudeSDKClient"}},"id":3}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## Adding a New Provider
