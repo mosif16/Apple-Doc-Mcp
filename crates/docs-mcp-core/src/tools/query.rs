@@ -272,8 +272,8 @@ static CLAUDE_AGENT_SDK_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
         // SDK names
         "claude agent sdk", "claude-agent-sdk", "agent sdk", "claudeagentsdk",
         "claude code sdk", "claude sdk",
-        // Core API
-        "claudesdkclient", "claudeagentoptions", "claudecodeoptions",
+        // Core API (TypeScript: ClaudeClient, Python: ClaudeSDKClient)
+        "claudeclient", "claudesdkclient", "claudeagentoptions", "claudecodeoptions",
         // Key functions
         "query", "mcp", "mcpservers",
         // Hooks
@@ -914,8 +914,8 @@ async fn execute_search_query(
         "mlx", "mlxswift",
         // Hugging Face but not model names that might be search terms
         "huggingface", "hf", "transformers",
-        // Claude Agent SDK but not concepts like "query", "hook"
-        "claude", "agent", "sdk", "claudeagentsdk", "claudesdkclient",
+        // Claude Agent SDK provider names only - keep class names like "claudesdkclient", "claudeclient"
+        "claude", "agent", "sdk", "claudeagentsdk",
     ];
 
     let search_keywords: Vec<&str> = intent
@@ -2101,7 +2101,9 @@ fn build_response(
                 if let Some(decl) = &result.declaration {
                     lines.push(String::new());
                     lines.push("**Declaration:**".to_string());
-                    lines.push(format!("```swift\n{}\n```", decl));
+                    // Determine code language based on provider/platform
+                    let code_lang = detect_code_language(provider, result.platforms.as_deref());
+                    lines.push(format!("```{}\n{}\n```", code_lang, decl));
                 }
             }
 
@@ -2132,7 +2134,9 @@ fn build_response(
             if let Some(code) = &result.code_sample {
                 lines.push(String::new());
                 lines.push("**Example:**".to_string());
-                lines.push(format!("```swift\n{}\n```", trim_text(code, MAX_CODE_LENGTH)));
+                // Determine code language based on provider/platform
+                let code_lang = detect_code_language(provider, result.platforms.as_deref());
+                lines.push(format!("```{}\n{}\n```", code_lang, trim_text(code, MAX_CODE_LENGTH)));
             }
 
             // Related APIs
@@ -2175,6 +2179,58 @@ fn trim_text(text: &str, max: usize) -> String {
             end -= 1;
         }
         format!("{}...", &text[..end])
+    }
+}
+
+/// Detect the appropriate code language for syntax highlighting based on provider and platform
+fn detect_code_language(provider: &ProviderType, platforms: Option<&str>) -> &'static str {
+    match provider {
+        ProviderType::Apple => "swift",
+        ProviderType::Rust => "rust",
+        ProviderType::Telegram | ProviderType::TON => "json",
+        ProviderType::Mdn => "javascript",
+        ProviderType::WebFrameworks => {
+            // Check platform for hints
+            if let Some(p) = platforms {
+                let p_lower = p.to_lowercase();
+                if p_lower.contains("node") {
+                    return "javascript";
+                }
+            }
+            "typescript"
+        }
+        ProviderType::Mlx => {
+            // Check platform for Swift vs Python
+            if let Some(p) = platforms {
+                let p_lower = p.to_lowercase();
+                if p_lower.contains("python") {
+                    return "python";
+                }
+            }
+            "swift"
+        }
+        ProviderType::HuggingFace => {
+            // Check platform for Swift vs Python
+            if let Some(p) = platforms {
+                let p_lower = p.to_lowercase();
+                if p_lower.contains("swift") {
+                    return "swift";
+                }
+            }
+            "python"
+        }
+        ProviderType::QuickNode => "javascript",
+        ProviderType::ClaudeAgentSdk => {
+            // Check platform for TypeScript vs Python
+            if let Some(p) = platforms {
+                let p_lower = p.to_lowercase();
+                if p_lower.contains("python") {
+                    return "python";
+                }
+            }
+            "typescript"
+        }
+        ProviderType::Cocoon => "text",
     }
 }
 

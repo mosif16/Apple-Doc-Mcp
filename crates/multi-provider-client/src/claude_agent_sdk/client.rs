@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::time::Duration as StdDuration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use directories::ProjectDirs;
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -172,19 +172,35 @@ impl ClaudeAgentSdkClient {
             }
         }
 
-        // Search common concepts
+        // Search common concepts - add for the requested language(s)
         for (concept, desc) in COMMON_SDK_CONCEPTS {
             if query_terms.iter().any(|t| concept.contains(t) || t.contains(concept)) {
-                // Add as a guide for both languages if not already found
                 let base_score = 60;
+
+                // Add TypeScript result if applicable
                 if language.is_none() || language == Some(AgentSdkLanguage::TypeScript) {
-                    if !results.iter().any(|r| r.name.to_lowercase() == *concept) {
+                    if !results.iter().any(|r| r.name.to_lowercase() == *concept && r.language == AgentSdkLanguage::TypeScript) {
                         results.push(AgentSdkSearchResult {
                             name: concept.to_string(),
                             path: format!("concepts/{}", concept.replace(' ', "-")),
                             url: format!("{}/overview", DOCS_BASE_URL),
                             kind: AgentSdkItemKind::Guide,
                             language: AgentSdkLanguage::TypeScript,
+                            description: (*desc).to_string(),
+                            score: base_score,
+                        });
+                    }
+                }
+
+                // Add Python result if applicable
+                if language.is_none() || language == Some(AgentSdkLanguage::Python) {
+                    if !results.iter().any(|r| r.name.to_lowercase() == *concept && r.language == AgentSdkLanguage::Python) {
+                        results.push(AgentSdkSearchResult {
+                            name: concept.to_string(),
+                            path: format!("concepts/{}", concept.replace(' ', "-")),
+                            url: format!("{}/overview", DOCS_BASE_URL),
+                            kind: AgentSdkItemKind::Guide,
+                            language: AgentSdkLanguage::Python,
                             description: (*desc).to_string(),
                             score: base_score,
                         });
@@ -276,9 +292,17 @@ impl ClaudeAgentSdkClient {
         // Get predefined examples and parameters
         let (examples, parameters, declaration, content) = self.get_predefined_content(name, language, path);
 
-        // Use live content if available, otherwise use predefined
+        // Use live content if available and valid (not placeholder/loading text)
+        // Otherwise use predefined content
         let final_content = live_content
-            .map(|c| if c.is_empty() { content.clone() } else { c })
+            .filter(|c| {
+                // Filter out invalid content: empty, too short, or containing placeholder patterns
+                !c.is_empty()
+                    && c.len() > 50
+                    && !c.contains("Loading...")
+                    && !c.contains("Please enable JavaScript")
+                    && !c.to_lowercase().contains("loading")
+            })
             .unwrap_or(content);
 
         AgentSdkArticle {
@@ -432,6 +456,59 @@ async for message in query("Write a fibonacci function", options=options):
                 ],
                 Some("async def query(prompt: str, options: ClaudeAgentOptions = None) -> AsyncIterator[Message]".to_string()),
                 "Async function that sends a prompt to the Claude agent and returns an AsyncIterator of response messages. Use this for stateless, single-turn interactions.".to_string(),
+            ),
+
+            // ClaudeClient TypeScript
+            ("ClaudeClient", AgentSdkLanguage::TypeScript) => (
+                vec![AgentSdkExample {
+                    code: r#"import { ClaudeClient, ClaudeAgentOptions } from '@anthropic-ai/claude-agent-sdk';
+
+const options: ClaudeAgentOptions = {
+  systemPrompt: "You are a helpful coding assistant",
+  maxTurns: 10,
+  allowedTools: ["Read", "Write", "Bash"]
+};
+
+const client = new ClaudeClient(options);
+
+// Start a conversation
+const response = await client.query("Help me write a React component");
+
+// Continue the conversation with context
+const followUp = await client.query("Now add TypeScript types to it");
+
+// Stream responses
+for await (const message of client.stream("Explain the code")) {
+  console.log(message);
+}"#.to_string(),
+                    language: "typescript".to_string(),
+                    description: Some("Multi-turn conversation example".to_string()),
+                }],
+                vec![
+                    AgentSdkParameter {
+                        name: "options".to_string(),
+                        description: "Configuration options for the client".to_string(),
+                        param_type: Some("ClaudeAgentOptions".to_string()),
+                        default_value: None,
+                        required: false,
+                    },
+                    AgentSdkParameter {
+                        name: "mcpServers".to_string(),
+                        description: "Custom MCP servers to register".to_string(),
+                        param_type: Some("Record<string, MCPServerConfig>".to_string()),
+                        default_value: None,
+                        required: false,
+                    },
+                    AgentSdkParameter {
+                        name: "hooks".to_string(),
+                        description: "Event hooks for the agent lifecycle".to_string(),
+                        param_type: Some("Hooks".to_string()),
+                        default_value: None,
+                        required: false,
+                    },
+                ],
+                Some("class ClaudeClient".to_string()),
+                "Main client class for interacting with Claude Agent SDK. Use this for multi-turn conversations that maintain session state across queries.".to_string(),
             ),
 
             // ClaudeAgentOptions TypeScript
@@ -656,10 +733,68 @@ async with ClaudeSDKClient(options=options) as client:
                 "Async context manager for bidirectional conversations with custom tools and hooks. Use this for multi-turn conversations that require session state.".to_string(),
             ),
 
-            // Hooks
-            ("hooks", _) => (
+            // Hooks TypeScript
+            ("hooks", AgentSdkLanguage::TypeScript) => (
                 vec![AgentSdkExample {
-                    code: r#"# Python hook example
+                    code: r#"import { query, ClaudeAgentOptions } from '@anthropic-ai/claude-agent-sdk';
+
+const options: ClaudeAgentOptions = {
+  hooks: {
+    PreToolUse: async (toolName: string, toolInput: Record<string, unknown>) => {
+      const forbiddenPatterns = ["/etc/passwd", "rm -rf"];
+
+      if (toolName === "Bash") {
+        const command = toolInput.command as string;
+        for (const pattern of forbiddenPatterns) {
+          if (command.includes(pattern)) {
+            return { denied: true, reason: `Forbidden: ${pattern}` };
+          }
+        }
+      }
+      return undefined; // Allow the tool to execute
+    },
+    PostToolUse: async (toolName: string, result: unknown) => {
+      console.log(`Tool ${toolName} completed with result:`, result);
+    }
+  }
+};
+
+const response = await query("Run a bash command", options);"#.to_string(),
+                    language: "typescript".to_string(),
+                    description: Some("PreToolUse and PostToolUse hooks".to_string()),
+                }],
+                vec![
+                    AgentSdkParameter {
+                        name: "PreToolUse".to_string(),
+                        description: "Called before tool execution, can deny or modify".to_string(),
+                        param_type: Some("(toolName: string, toolInput: object) => Promise<{denied: boolean, reason?: string} | undefined>".to_string()),
+                        default_value: None,
+                        required: false,
+                    },
+                    AgentSdkParameter {
+                        name: "PostToolUse".to_string(),
+                        description: "Called after tool execution with results".to_string(),
+                        param_type: Some("(toolName: string, result: unknown) => Promise<void>".to_string()),
+                        default_value: None,
+                        required: false,
+                    },
+                    AgentSdkParameter {
+                        name: "OnMessage".to_string(),
+                        description: "Called when a message is received".to_string(),
+                        param_type: Some("(message: Message) => Promise<void>".to_string()),
+                        default_value: None,
+                        required: false,
+                    },
+                ],
+                Some("interface Hooks { PreToolUse?: HookFn; PostToolUse?: HookFn; OnMessage?: MessageHookFn; }".to_string()),
+                "Hooks are functions invoked at specific points in the agent execution cycle. Use them for permission control, logging, or custom processing.".to_string(),
+            ),
+
+            // Hooks Python
+            ("hooks", AgentSdkLanguage::Python) => (
+                vec![AgentSdkExample {
+                    code: r#"from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+
 def pre_tool_use_hook(tool_name: str, tool_input: dict) -> dict | None:
     """Hook called before each tool execution."""
     forbidden_patterns = ["/etc/passwd", "rm -rf"]
@@ -672,36 +807,46 @@ def pre_tool_use_hook(tool_name: str, tool_input: dict) -> dict | None:
 
     return None  # Allow the tool to execute
 
+def post_tool_use_hook(tool_name: str, result: dict) -> None:
+    """Hook called after each tool execution."""
+    print(f"Tool {tool_name} completed with result: {result}")
+
 options = ClaudeAgentOptions(
-    hooks={"PreToolUse": pre_tool_use_hook}
-)"#.to_string(),
+    hooks={
+        "PreToolUse": pre_tool_use_hook,
+        "PostToolUse": post_tool_use_hook
+    }
+)
+
+async with ClaudeSDKClient(options=options) as client:
+    response = await client.query("Run a bash command")"#.to_string(),
                     language: "python".to_string(),
-                    description: Some("PreToolUse hook for security".to_string()),
+                    description: Some("PreToolUse and PostToolUse hooks".to_string()),
                 }],
                 vec![
                     AgentSdkParameter {
                         name: "PreToolUse".to_string(),
                         description: "Called before tool execution, can deny or modify".to_string(),
-                        param_type: Some("Callable".to_string()),
+                        param_type: Some("Callable[[str, dict], dict | None]".to_string()),
                         default_value: None,
                         required: false,
                     },
                     AgentSdkParameter {
                         name: "PostToolUse".to_string(),
                         description: "Called after tool execution with results".to_string(),
-                        param_type: Some("Callable".to_string()),
+                        param_type: Some("Callable[[str, dict], None]".to_string()),
                         default_value: None,
                         required: false,
                     },
                     AgentSdkParameter {
                         name: "OnMessage".to_string(),
                         description: "Called when a message is received".to_string(),
-                        param_type: Some("Callable".to_string()),
+                        param_type: Some("Callable[[Message], None]".to_string()),
                         default_value: None,
                         required: false,
                     },
                 ],
-                None,
+                Some("hooks: Dict[str, Callable] = {'PreToolUse': fn, 'PostToolUse': fn, 'OnMessage': fn}".to_string()),
                 "Hooks are functions invoked at specific points in the agent execution cycle. Use them for permission control, logging, or custom processing.".to_string(),
             ),
 
