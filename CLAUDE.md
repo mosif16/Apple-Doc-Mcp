@@ -18,6 +18,7 @@ Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that prov
 - **QuickNode**: Solana blockchain RPC documentation (HTTP methods, WebSocket, Marketplace add-ons)
 - **Claude Agent SDK**: TypeScript and Python SDKs for building AI agents with Claude Code capabilities
 - **Vertcoin**: GPU-mineable cryptocurrency with Verthash algorithm, JSON-RPC API documentation
+- **CUDA**: NVIDIA GPU programming (Runtime API, kernel development, cuBLAS, cuDNN) with RTX 3070/4090 specific documentation
 
 ## Build Commands
 
@@ -48,7 +49,7 @@ cargo clippy --all-targets
 │   ├── docs-mcp-client/       # HTTP client for Apple's documentation API
 │   ├── docs-mcp-core/         # Core logic: tools, state, services, transport
 │   ├── docs-mcp/          # MCP protocol bootstrap and config resolution
-│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, Claude Agent SDK, and Vertcoin APIs
+│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin, and CUDA APIs
 │       ├── src/
 │       │   ├── telegram/        # Telegram Bot API client
 │       │   ├── ton/             # TON blockchain API client
@@ -61,6 +62,7 @@ cargo clippy --all-targets
 │       │   ├── quicknode/       # QuickNode Solana RPC documentation client
 │       │   ├── claude_agent_sdk/# Claude Agent SDK client (TypeScript + Python)
 │       │   ├── vertcoin/        # Vertcoin blockchain RPC documentation client
+│       │   ├── cuda/            # CUDA GPU programming documentation client
 │       │   ├── types.rs         # Unified types across all providers
 │       │   └── lib.rs           # ProviderClients aggregation
 ```
@@ -85,6 +87,7 @@ cargo clippy --all-targets
   - `QuickNodeClient`: Solana RPC documentation from `quicknode.com/docs/solana`
   - `ClaudeAgentSdkClient`: Claude Agent SDK documentation for TypeScript and Python from `docs.anthropic.com`
   - `VertcoinClient`: Vertcoin blockchain RPC documentation with Verthash mining support
+  - `CudaClient`: CUDA GPU programming documentation (Runtime API, kernels, libraries) with RTX 3070/4090 specs
 
 ### Provider Architecture
 
@@ -104,6 +107,7 @@ pub enum ProviderType {
     HuggingFace,
     QuickNode,
     ClaudeAgentSdk,
+    Cuda,
 }
 
 pub struct ProviderClients {
@@ -119,6 +123,7 @@ pub struct ProviderClients {
     pub quicknode: QuickNodeClient,
     pub claude_agent_sdk: ClaudeAgentSdkClient,
     pub vertcoin: VertcoinClient,
+    pub cuda: CudaClient,
 }
 ```
 
@@ -134,7 +139,7 @@ Each tool dispatches to the appropriate provider based on `active_provider` stat
 
 The `query` tool acts as an intelligent entry point that:
 1. Parses natural language queries to extract intent (how-to, reference, search)
-2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin)
+2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin, CUDA)
 3. Auto-selects the relevant technology/framework
 4. Executes optimized search across the detected provider
 5. Fetches detailed documentation for top results
@@ -231,6 +236,20 @@ The `query` tool acts as an intelligent entry point that:
 - **Specifications**: 2.5 minute block time, 84M supply, SegWit, Kimoto Gravity Well difficulty
 - CLI examples with vertcoin-cli and JSON-RPC curl commands
 
+#### CUDA (NVIDIA GPU Programming)
+- **Runtime API**: 50+ functions for memory management (cudaMalloc, cudaMemcpy, cudaFree)
+- **Device Management**: cudaGetDeviceProperties, cudaSetDevice, cudaDeviceSynchronize
+- **Kernel Programming**: __global__, __device__, __shared__, __constant__ qualifiers
+- **Thread Indexing**: threadIdx, blockIdx, blockDim, gridDim built-in variables
+- **Synchronization**: __syncthreads, __syncwarp, atomic operations (atomicAdd, atomicCAS)
+- **Warp Primitives**: __shfl_sync, __ballot_sync for efficient parallel reductions
+- **Streams & Events**: Asynchronous execution and GPU timing
+- **Libraries**: cuBLAS (GEMM), cuDNN (convolutions), cuFFT, cuRAND, NCCL (multi-GPU)
+- **RTX 3070**: GA104, Compute 8.6, 5888 CUDA cores, 8GB GDDR6, 4MB L2 cache
+- **RTX 4090**: AD102, Compute 8.9, 16384 CUDA cores, 24GB GDDR6X, 72MB L2 cache
+- **Optimization**: Memory coalescing, occupancy, warp divergence, grid-stride loops, Tensor Cores
+- Comprehensive code examples for kernel development
+
 ### Unified Query Tool Features
 
 The `query` tool implements advanced natural language processing:
@@ -264,6 +283,7 @@ Intelligently detects the target provider from query context:
 - **QuickNode**: quicknode, solana, getaccountinfo, getbalance, lamports, pubkey keywords
 - **Claude Agent SDK**: claude, agent sdk, claudeagentsdk, claudesdkclient, query, mcp, hooks keywords
 - **Vertcoin**: vertcoin, vtc, verthash, vertcoin-cli, getblockchaininfo, getnewaddress, one click miner keywords
+- **CUDA**: cuda, nvcc, cudamalloc, cudamemcpy, __global__, __shared__, cublas, cudnn, rtx 3070, rtx 4090, tensor cores keywords
 
 #### Query Type Classification
 Three query types with specialized handling:
@@ -295,6 +315,10 @@ input_examples: Some(vec![
     json!({"query": "Vertcoin getblockchaininfo"}),
     json!({"query": "Verthash mining algorithm"}),
     json!({"query": "vertcoin-cli sendtoaddress"}),
+    json!({"query": "CUDA cudaMalloc cudaMemcpy"}),
+    json!({"query": "CUDA __global__ kernel example"}),
+    json!({"query": "RTX 4090 specs"}),
+    json!({"query": "cuBLAS matrix multiplication"}),
 ])
 ```
 
@@ -419,6 +443,18 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test query with Vertcoin (Wallet)
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"vertcoin-cli sendtoaddress"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with CUDA (Memory)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"cudaMalloc cudaMemcpy"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with CUDA (Kernel)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"CUDA __global__ __shared__ kernel"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with CUDA (RTX GPU specs)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"RTX 4090 specs CUDA cores"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with CUDA (Libraries)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"cuBLAS GEMM matrix multiplication"}},"id":3}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## Adding a New Provider

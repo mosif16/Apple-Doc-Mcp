@@ -350,6 +350,46 @@ static VERTCOIN_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
+/// CUDA GPU programming keywords
+static CUDA_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        // Core CUDA identifiers
+        "cuda", "nvcc", "nvidia cuda", "cuda toolkit",
+        // Runtime API functions
+        "cudamalloc", "cudafree", "cudamemcpy", "cudamemcpyasync",
+        "cudamallocmanaged", "cudamallochost", "cudafreehost",
+        "cudamemset", "cudadevicesynchronize", "cudalaunchkernel",
+        "cudagetdevicecount", "cudasetdevice", "cudagetdeviceproperties",
+        // Kernel programming
+        "__global__", "__device__", "__host__", "__shared__", "__constant__",
+        "threadidx", "blockidx", "blockdim", "griddim",
+        "__syncthreads", "__syncwarp", "warpsize",
+        // Atomic operations
+        "atomicadd", "atomiccas", "atomicexch", "atomicmin", "atomicmax",
+        // Warp operations
+        "__shfl_sync", "__ballot_sync", "warp shuffle", "warp primitive",
+        // Streams and events
+        "cudastreamcreate", "cudastreamdestroy", "cudastreamsynchronize",
+        "cudaeventcreate", "cudaeventelapsedtime", "cudaeventrecord",
+        // Libraries
+        "cublas", "cudnn", "cufft", "curand", "nccl",
+        "cublassgemm", "cublasdgemm", "cublashgemm",
+        "cudnnconvolutionforward", "cudnnbatchnormalization",
+        // GPU specs
+        "rtx 3070", "rtx 4090", "rtx3070", "rtx4090",
+        "compute capability", "cuda cores", "tensor cores", "sm",
+        "ampere", "ada lovelace", "ga104", "ad102",
+        // Memory types
+        "global memory", "shared memory", "constant memory", "texture memory",
+        "unified memory", "pinned memory", "device memory",
+        // Optimization
+        "memory coalescing", "bank conflict", "occupancy", "warp divergence",
+        "grid stride loop", "kernel fusion", "tensor core",
+        // General
+        "gpu kernel", "cuda kernel", "gpu programming", "parallel computing",
+    ]
+});
+
 /// How-to query patterns
 static HOWTO_PATTERNS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(how\s+(do\s+i|to|can\s+i)|what'?s?\s+the\s+(best\s+)?way\s+to|implement|create|make|build|add|show\s+me\s+how)").unwrap()
@@ -368,9 +408,9 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 "Complete documentation retrieval in a single call. Returns full documentation \
                  content, code examples, declarations, and parameters—no follow-up calls needed. \
                  Auto-detects provider (Apple, Rust, Telegram, TON, Cocoon, MDN, React, Next.js, \
-                 Node.js, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin) from your query. \
+                 Node.js, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin, CUDA) from your query. \
                  Top 5 results include complete documentation; remaining results include summaries. \
-                 Use natural language: 'SwiftUI NavigationStack', 'Rust tokio spawn', 'Claude Agent SDK query function'."
+                 Use natural language: 'SwiftUI NavigationStack', 'Rust tokio spawn', 'CUDA cudaMalloc', 'RTX 4090 specs'."
                     .to_string(),
             input_schema: json!({
                 "type": "object",
@@ -407,6 +447,12 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"query": "Verthash mining algorithm"}),
                 json!({"query": "vertcoin-cli sendtoaddress"}),
                 json!({"query": "Vertcoin RPC getbalance"}),
+                json!({"query": "CUDA cudaMalloc memory allocation"}),
+                json!({"query": "CUDA __shared__ memory example"}),
+                json!({"query": "CUDA kernel __global__ function"}),
+                json!({"query": "RTX 4090 specifications CUDA"}),
+                json!({"query": "cuBLAS matrix multiplication"}),
+                json!({"query": "CUDA memory coalescing optimization"}),
             ]),
             allowed_callers: None,
         },
@@ -532,6 +578,26 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
                 "vertcoin:blockchain"
             };
             return (Some(ProviderType::Vertcoin), Some(tech.to_string()));
+        }
+    }
+
+    // Check for CUDA keywords (GPU programming)
+    for keyword in CUDA_KEYWORDS.iter() {
+        if contains_word(query, keyword) || query.contains(keyword) {
+            // Determine category based on query content
+            let tech = if query.contains("kernel") || query.contains("__global__") || query.contains("__device__") || query.contains("__shared__") {
+                "cuda:kernels"
+            } else if query.contains("cublas") || query.contains("cudnn") || query.contains("cufft") || query.contains("curand") || query.contains("nccl") {
+                "cuda:libraries"
+            } else if query.contains("rtx") || query.contains("3070") || query.contains("4090") || query.contains("spec") || query.contains("compute capability") {
+                "cuda:gpu"
+            } else if query.contains("coalescing") || query.contains("occupancy") || query.contains("optimization") || query.contains("performance") {
+                "cuda:optimization"
+            } else {
+                // Default to runtime API
+                "cuda:runtime"
+            };
+            return (Some(ProviderType::Cuda), Some(tech.to_string()));
         }
     }
 
@@ -914,6 +980,33 @@ async fn resolve_technology(
                 *context.state.active_unified_technology.write().await = Some(unified);
                 Ok((*provider, category_name.to_string()))
             }
+            ProviderType::Cuda => {
+                // Parse category from tech_id (e.g., "cuda:runtime" -> "CUDA Runtime API")
+                let category_name = tech_id
+                    .strip_prefix("cuda:")
+                    .map(|c| match c {
+                        "runtime" => "CUDA Runtime API",
+                        "kernels" => "CUDA Kernel Programming",
+                        "libraries" => "CUDA Libraries",
+                        "gpu" => "GPU Specifications (RTX 3070/4090)",
+                        "optimization" => "CUDA Optimization",
+                        "memory" => "CUDA Memory Management",
+                        "stream" => "CUDA Streams",
+                        "event" => "CUDA Events",
+                        _ => "CUDA Runtime API",
+                    })
+                    .unwrap_or("CUDA Runtime API");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: category_name.to_string(),
+                    description: "CUDA GPU programming for RTX 3070 and RTX 4090".to_string(),
+                    provider: ProviderType::Cuda,
+                    url: Some("https://docs.nvidia.com/cuda".to_string()),
+                    kind: multi_provider_client::types::TechnologyKind::CudaApi,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, category_name.to_string()))
+            }
         }
     } else {
         // No provider detected - check if there's an active technology, otherwise default to Apple/SwiftUI
@@ -1065,6 +1158,7 @@ async fn execute_search_query(
         ProviderType::QuickNode => search_quicknode(context, &search_query, max_results).await,
         ProviderType::ClaudeAgentSdk => search_claude_agent_sdk(context, intent, &search_query, max_results).await,
         ProviderType::Vertcoin => search_vertcoin(context, &search_query, max_results).await,
+        ProviderType::Cuda => search_cuda(context, &search_query, max_results).await,
     }
 }
 
@@ -1969,6 +2063,62 @@ async fn search_vertcoin(
     Ok(results)
 }
 
+/// Search CUDA GPU programming documentation
+async fn search_cuda(
+    context: &Arc<AppContext>,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    let items = match context.providers.cuda.search(query).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "CUDA search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full method documentation for top results
+        let (full_content, code_sample, parameters) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.cuda.get_method(&item.name).await {
+                Ok(method) => {
+                    let code = method.examples.first().map(|e| e.code.clone());
+                    let params: Vec<(String, String)> = method
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.description.clone()))
+                        .collect();
+                    let content = if !method.description.is_empty() {
+                        Some(method.description.clone())
+                    } else {
+                        None
+                    };
+                    (content, code, params)
+                }
+                Err(_) => (Some(item.description.clone()), None, Vec::new()),
+            }
+        } else {
+            (None, None, Vec::new())
+        };
+
+        results.push(DocResult {
+            title: item.name.clone(),
+            kind: item.kind.to_string(),
+            path: item.name,
+            summary: item.description.clone(),
+            platforms: Some("CUDA / NVIDIA GPU".to_string()),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration: None,
+            parameters,
+        });
+    }
+
+    Ok(results)
+}
+
 /// Extract code sample from Apple symbol data
 fn extract_code_sample(symbol: &docs_mcp_client::types::SymbolData) -> Option<String> {
     // Look for code listings in primary content sections
@@ -2411,6 +2561,7 @@ fn detect_code_language(provider: &ProviderType, platforms: Option<&str>) -> &'s
         }
         ProviderType::Cocoon => "text",
         ProviderType::Vertcoin => "bash",
+        ProviderType::Cuda => "cuda",
     }
 }
 

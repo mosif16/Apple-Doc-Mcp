@@ -386,6 +386,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             TechnologyKind::QuickNodeApi => " [Solana]",
             TechnologyKind::AgentSdkLibrary => " [SDK]",
             TechnologyKind::VertcoinApi => " [VTC]",
+            TechnologyKind::CudaApi => " [GPU]",
         };
         title_line.push_str(kind_badge);
 
@@ -451,6 +452,7 @@ fn provider_display_name(provider: &ProviderType) -> &'static str {
         ProviderType::QuickNode => "⚡ QuickNode Solana",
         ProviderType::ClaudeAgentSdk => "🤖 Claude Agent SDK",
         ProviderType::Vertcoin => "💚 Vertcoin",
+        ProviderType::Cuda => "🎮 CUDA",
     }
 }
 
@@ -461,14 +463,15 @@ fn provider_sort_order(provider: &ProviderType) -> u8 {
         ProviderType::Telegram => 1,
         ProviderType::TON => 2,
         ProviderType::Cocoon => 3,
-        ProviderType::Rust => 4,
-        ProviderType::Mdn => 5,
-        ProviderType::WebFrameworks => 6,
-        ProviderType::Mlx => 7,
-        ProviderType::HuggingFace => 8,
-        ProviderType::QuickNode => 9,
-        ProviderType::ClaudeAgentSdk => 10,
-        ProviderType::Vertcoin => 11,
+        ProviderType::Cuda => 4,
+        ProviderType::Rust => 5,
+        ProviderType::Mdn => 6,
+        ProviderType::WebFrameworks => 7,
+        ProviderType::Mlx => 8,
+        ProviderType::HuggingFace => 9,
+        ProviderType::QuickNode => 10,
+        ProviderType::ClaudeAgentSdk => 11,
+        ProviderType::Vertcoin => 12,
     }
 }
 
@@ -498,6 +501,7 @@ fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>)
             TechnologyKind::QuickNodeApi => 42,
             TechnologyKind::AgentSdkLibrary => 43,
             TechnologyKind::VertcoinApi => 41,
+            TechnologyKind::CudaApi => 49, // High score for CUDA/GPU programming
         }
     };
 
