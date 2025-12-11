@@ -212,6 +212,41 @@ static NODEJS_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
+/// Bun runtime keywords
+static BUN_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        // Core runtime
+        "bun", "bunjs", "bun.sh", "bunfile", "bunfig", "bunfig.toml",
+        // Bun-specific APIs
+        "bun.serve", "bun.file", "bun.write", "bun.spawn", "bun.spawnSync",
+        "bun.build", "bun.password", "bun.hash", "bun.sleep", "bun.sleepSync",
+        "bun.env", "bun.gc", "bun.which", "bun.peek", "bun.inspect",
+        "bun.nanoseconds", "bun.listen", "bun.connect", "bun.udpsocket",
+        "bun.transpiler", "bun.deepEquals", "bun.escapeHTML", "bun.pathToFileURL",
+        "bun.fileURLToPath", "bun.resolveSync", "bun.resolve", "bun.version",
+        "bun.cryptohasher", "bun.arraybuffersink", "bun.openineditor",
+        // Server/networking
+        "serverwebsocket", "websocket pubsub", "bun http server",
+        // SQLite
+        "bun:sqlite", "bun sqlite",
+        // FFI
+        "bun:ffi", "bun ffi", "dlopen",
+        // CLI commands
+        "bunx", "bun install", "bun add", "bun remove", "bun update",
+        "bun run", "bun test", "bun build", "bun create", "bun init",
+        "bun link", "bun pm", "bun upgrade", "bun repl",
+        // Testing
+        "bun:test", "bun test runner",
+        // Package manager
+        "bun.lockb", "bun lockfile", "bun workspaces", "bun cache",
+        // Configuration
+        "bunfig runtime", "bunfig install", "bunfig test",
+        // Comparison keywords (when users ask about Bun specifically)
+        "bun vs node", "bun vs deno", "bun runtime", "bun typescript",
+        "bun jsx", "bun hot reload", "bun watch",
+    ]
+});
+
 /// MLX (Apple Silicon ML) keywords
 static MLX_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     vec![
@@ -338,6 +373,11 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"query": "Claude Agent SDK query function typescript"}),
                 json!({"query": "agent sdk python ClaudeSDKClient"}),
                 json!({"query": "Claude Agent SDK hooks PreToolUse"}),
+                json!({"query": "Bun serve HTTP server"}),
+                json!({"query": "Bun.file read write"}),
+                json!({"query": "Bun SQLite database"}),
+                json!({"query": "Bun.spawn child process"}),
+                json!({"query": "bun test runner expect"}),
             ]),
             allowed_callers: None,
         },
@@ -478,6 +518,13 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
     for keyword in NEXTJS_KEYWORDS.iter() {
         if contains_word(query, keyword) {
             return (Some(ProviderType::WebFrameworks), Some("webfw:nextjs".to_string()));
+        }
+    }
+
+    // Check for Bun keywords (before Node.js since Bun is more specific)
+    for keyword in BUN_KEYWORDS.iter() {
+        if contains_word(query, keyword) || query.contains(keyword) {
+            return (Some(ProviderType::WebFrameworks), Some("webfw:bun".to_string()));
         }
     }
 
@@ -1461,6 +1508,7 @@ async fn search_web_frameworks(
             "react" => WebFramework::React,
             "nextjs" => WebFramework::NextJs,
             "nodejs" => WebFramework::NodeJs,
+            "bun" => WebFramework::Bun,
             _ => WebFramework::React,
         })
         .unwrap_or(WebFramework::React);
@@ -1477,6 +1525,7 @@ async fn search_web_frameworks(
         WebFramework::React => "React",
         WebFramework::NextJs => "Next.js",
         WebFramework::NodeJs => "Node.js",
+        WebFramework::Bun => "Bun",
     };
 
     let mut results = Vec::new();

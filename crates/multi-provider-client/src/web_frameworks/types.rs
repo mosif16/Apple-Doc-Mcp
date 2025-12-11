@@ -7,6 +7,7 @@ pub enum WebFramework {
     React,
     NextJs,
     NodeJs,
+    Bun,
 }
 
 impl WebFramework {
@@ -16,6 +17,7 @@ impl WebFramework {
             Self::React => "react",
             Self::NextJs => "nextjs",
             Self::NodeJs => "nodejs",
+            Self::Bun => "bun",
         }
     }
 
@@ -25,6 +27,7 @@ impl WebFramework {
             Self::React => "React",
             Self::NextJs => "Next.js",
             Self::NodeJs => "Node.js",
+            Self::Bun => "Bun",
         }
     }
 
@@ -34,6 +37,7 @@ impl WebFramework {
             Self::React => "https://react.dev",
             Self::NextJs => "https://nextjs.org",
             Self::NodeJs => "https://nodejs.org",
+            Self::Bun => "https://bun.sh",
         }
     }
 
@@ -47,6 +51,8 @@ impl WebFramework {
             Some(Self::NextJs)
         } else if lower.contains("node") {
             Some(Self::NodeJs)
+        } else if lower.contains("bun") {
+            Some(Self::Bun)
         } else {
             None
         }
@@ -177,6 +183,14 @@ impl WebFrameworkTechnology {
                 url: "https://nodejs.org".to_string(),
                 version: "22".to_string(),
             },
+            Self {
+                identifier: "webfw:bun".to_string(),
+                framework: WebFramework::Bun,
+                title: "Bun".to_string(),
+                description: "Fast all-in-one JavaScript runtime with bundler, transpiler, and package manager".to_string(),
+                url: "https://bun.sh".to_string(),
+                version: "1.1".to_string(),
+            },
         ]
     }
 }
@@ -274,6 +288,8 @@ mod tests {
         assert_eq!(WebFramework::from_str_opt("React"), Some(WebFramework::React));
         assert_eq!(WebFramework::from_str_opt("nextjs"), Some(WebFramework::NextJs));
         assert_eq!(WebFramework::from_str_opt("Node.js"), Some(WebFramework::NodeJs));
+        assert_eq!(WebFramework::from_str_opt("bun"), Some(WebFramework::Bun));
+        assert_eq!(WebFramework::from_str_opt("Bun runtime"), Some(WebFramework::Bun));
         assert_eq!(WebFramework::from_str_opt("python"), None);
     }
 
@@ -303,9 +319,10 @@ mod tests {
     #[test]
     fn test_predefined_technologies() {
         let techs = WebFrameworkTechnology::predefined();
-        assert_eq!(techs.len(), 3);
+        assert_eq!(techs.len(), 4);
         assert!(techs.iter().any(|t| t.framework == WebFramework::React));
         assert!(techs.iter().any(|t| t.framework == WebFramework::NextJs));
         assert!(techs.iter().any(|t| t.framework == WebFramework::NodeJs));
+        assert!(techs.iter().any(|t| t.framework == WebFramework::Bun));
     }
 }

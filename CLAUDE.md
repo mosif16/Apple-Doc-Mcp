@@ -11,7 +11,8 @@ Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that prov
 - **Cocoon**: Confidential computing documentation
 - **Rust**: Standard library (std, core, alloc) and any crate from docs.rs
 - **MDN**: JavaScript, TypeScript, Web APIs, DOM documentation
-- **Web Frameworks**: React, Next.js, and Node.js documentation
+- **Web Frameworks**: React, Next.js, Node.js, and Bun documentation
+- **Bun**: Fast all-in-one JavaScript runtime with bundler, transpiler, test runner, and package manager
 - **MLX**: Apple's machine learning framework for Apple Silicon (Swift and Python)
 - **Hugging Face**: Transformers library and swift-transformers for LLM/AI development
 - **QuickNode**: Solana blockchain RPC documentation (HTTP methods, WebSocket, Marketplace add-ons)
@@ -53,7 +54,7 @@ cargo clippy --all-targets
 │       │   ├── cocoon/          # Cocoon confidential computing client
 │       │   ├── rust/            # Rust documentation client (std + docs.rs)
 │       │   ├── mdn/             # MDN Web Docs client (JavaScript, Web APIs)
-│       │   ├── web_frameworks/  # React, Next.js, Node.js documentation client
+│       │   ├── web_frameworks/  # React, Next.js, Node.js, Bun documentation client
 │       │   ├── mlx/             # MLX ML framework client (Swift + Python)
 │       │   ├── huggingface/     # Hugging Face transformers client
 │       │   ├── quicknode/       # QuickNode Solana RPC documentation client
@@ -76,7 +77,7 @@ cargo clippy --all-targets
   - `CocoonClient`: Cocoon documentation from `cocoon.org`
   - `RustClient`: Rust std library + any crate from `docs.rs`
   - `MdnClient`: JavaScript, TypeScript, Web APIs from `developer.mozilla.org`
-  - `WebFrameworksClient`: React, Next.js, Node.js documentation with example extraction
+  - `WebFrameworksClient`: React, Next.js, Node.js, Bun documentation with example extraction
   - `MlxClient`: MLX ML framework documentation (Swift DocC + Python Sphinx) from `ml-explore.github.io`
   - `HuggingFaceClient`: Transformers and swift-transformers documentation from `huggingface.co`
   - `QuickNodeClient`: Solana RPC documentation from `quicknode.com/docs/solana`
@@ -175,7 +176,20 @@ The `query` tool acts as an intelligent entry point that:
 - **React**: Hooks (useState, useEffect, etc.), components, patterns
 - **Next.js**: App Router, Server Components, API routes
 - **Node.js**: Core modules (fs, path, http, crypto, stream)
+- **Bun**: Runtime APIs, HTTP server, WebSocket, SQLite, bundler, test runner
 - Usage examples prioritized by completeness and runnability
+
+#### Bun Runtime
+- **Runtime APIs**: Bun.serve, Bun.file, Bun.write, Bun.spawn, Bun.sleep, Bun.env
+- **HTTP/WebSocket**: Fast HTTP server with WebSocket pub/sub support
+- **File I/O**: BunFile with streaming, lazy loading, and efficient writes
+- **Database**: Built-in SQLite driver with prepared statements and transactions
+- **Bundler**: Bun.build with code splitting, minification, and plugin support
+- **Test Runner**: bun test with Jest-compatible API, mocking, and snapshots
+- **Package Manager**: Fast npm-compatible package manager with bun.lockb
+- **FFI**: Foreign Function Interface for calling native libraries
+- **Crypto**: Password hashing (bcrypt/argon2), cryptographic hashers
+- **Node.js Compatibility**: Compatible with most Node.js APIs
 
 #### MLX (Apple Silicon ML)
 - **MLX Swift**: MLXArray, MLXRandom, MLXLinalg, MLXNN, MLXFFT, MLXOptimizers
@@ -230,6 +244,7 @@ Intelligently detects the target provider from query context:
 - **MDN**: javascript, js, dom, fetch, promise, array, web, browser keywords
 - **React**: react, jsx, hook, usestate, useeffect, component keywords
 - **Next.js**: nextjs, next, approuter, servercomponent keywords
+- **Bun**: bun, bunjs, bun.serve, bun.file, bunx, bun.spawn, bun:sqlite, bun:test, bunfig keywords
 - **Node.js**: nodejs, node, fs, path, http, stream keywords
 - **MLX**: mlx, mlxarray, mlxnn, apple silicon, ml-explore keywords
 - **Hugging Face**: huggingface, transformers, automodel, autotokenizer, swift-transformers keywords
@@ -254,6 +269,9 @@ input_examples: Some(vec![
     json!({"query": "React useState hook"}),
     json!({"query": "Next.js server components"}),
     json!({"query": "Node.js fs readFile"}),
+    json!({"query": "Bun serve HTTP server"}),
+    json!({"query": "Bun.file read write"}),
+    json!({"query": "Bun SQLite database"}),
     json!({"query": "MLX array operations Swift"}),
     json!({"query": "Hugging Face AutoModel from_pretrained"}),
     json!({"query": "Solana getAccountInfo"}),
@@ -309,6 +327,7 @@ All providers use two-tier caching:
 | MDN article content | 30min | 24h |
 | React/Next.js docs | 1h | 24h |
 | Node.js API index | 24h | 7d |
+| Bun docs | 1h | 24h |
 | MLX Swift docs | 1h | 24h |
 | MLX Python docs | 1h | 24h |
 | Hugging Face docs | 1h | 24h |
@@ -352,6 +371,12 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test query with Node.js
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Node.js fs readFile"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Bun
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Bun serve HTTP server"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Bun SQLite
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Bun SQLite database"}},"id":3}\n' | ./target/release/docs-mcp-cli
 
 # Test query with MLX (Apple Silicon ML)
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"MLX array operations Swift"}},"id":3}\n' | ./target/release/docs-mcp-cli
