@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(winget install:*)",
+      "Bash(cargo build:*)",
+      "Bash(cmd /c \"cargo build --release\")",
+      "Bash(powershell.exe -Command \"cargo build --release 2>&1\")",
+      "Bash(powershell.exe -Command \"& ''$env:USERPROFILE\\.cargo\\bin\\cargo.exe'' build --release 2>&1\")",
+      "Bash(powershell.exe -Command \"C:\\Users\\moham\\.cargo\\bin\\cargo.exe build --release 2>&1\")",
+      "Bash(powershell.exe -Command \"C:\\Users\\moham\\.cargo\\bin\\cargo.exe run -p docs-mcp-cli --release 2>&1\")",
+      "Bash(powershell.exe -Command \"$input = @(''{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"method\"\":\"\"initialize\"\",\"\"params\"\":{\"\"protocolVersion\"\":\"\"2024-11-05\"\",\"\"capabilities\"\":{},\"\"clientInfo\"\":{\"\"name\"\":\"\"test\"\",\"\"version\"\":\"\"1.0\"\"}},\"\"id\"\":1}'', ''{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"method\"\":\"\"notifications/initialized\"\",\"\"params\"\":{}}'', ''{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"method\"\":\"\"tools/list\"\",\"\"params\"\":{},\"\"id\"\":2}''); $input | C:\\Users\\moham\\Desktop\\Doc-Mcp\\target\\release\\docs-mcp-cli.exe\")",
+      "Bash(powershell.exe:*)"
+    ]
+  }
+}
