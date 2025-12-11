@@ -385,6 +385,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             TechnologyKind::HfLibrary => " [AI]",
             TechnologyKind::QuickNodeApi => " [Solana]",
             TechnologyKind::AgentSdkLibrary => " [SDK]",
+            TechnologyKind::VertcoinApi => " [VTC]",
         };
         title_line.push_str(kind_badge);
 
@@ -449,6 +450,7 @@ fn provider_display_name(provider: &ProviderType) -> &'static str {
         ProviderType::HuggingFace => "🤗 Hugging Face",
         ProviderType::QuickNode => "⚡ QuickNode Solana",
         ProviderType::ClaudeAgentSdk => "🤖 Claude Agent SDK",
+        ProviderType::Vertcoin => "💚 Vertcoin",
     }
 }
 
@@ -466,6 +468,7 @@ fn provider_sort_order(provider: &ProviderType) -> u8 {
         ProviderType::HuggingFace => 8,
         ProviderType::QuickNode => 9,
         ProviderType::ClaudeAgentSdk => 10,
+        ProviderType::Vertcoin => 11,
     }
 }
 
@@ -494,6 +497,7 @@ fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>)
             TechnologyKind::HfLibrary => 44,
             TechnologyKind::QuickNodeApi => 42,
             TechnologyKind::AgentSdkLibrary => 43,
+            TechnologyKind::VertcoinApi => 41,
         }
     };
 

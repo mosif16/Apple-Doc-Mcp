@@ -75,7 +75,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         }
         ProviderType::Telegram | ProviderType::TON | ProviderType::Cocoon | ProviderType::Rust
         | ProviderType::Mdn | ProviderType::WebFrameworks | ProviderType::Mlx | ProviderType::HuggingFace
-        | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk => {
+        | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk | ProviderType::Vertcoin => {
             context
                 .state
                 .active_unified_technology

@@ -325,6 +325,31 @@ static CLAUDE_AGENT_SDK_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
+/// Vertcoin blockchain keywords
+static VERTCOIN_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        // Core identifiers
+        "vertcoin", "vtc", "verthash",
+        // Mining related
+        "verthash.dat", "verthash miner", "verthashminer", "one click miner", "ocm",
+        "gpu mining", "asic resistance", "asic resistant",
+        // Network/blockchain
+        "vertcoin-cli", "vertcoind", "vertcoin-qt", "vertcoin core",
+        // RPC methods (common ones)
+        "getblockchaininfo", "getmininginfo", "getnetworkhashps", "getblocktemplate",
+        "getbalance", "getnewaddress", "sendtoaddress", "listtransactions",
+        "getpeerinfo", "getconnectioncount", "getnetworkinfo",
+        // Wallet
+        "vertcoin wallet", "vtc wallet", "vtcwallet",
+        // Specifications
+        "kimoto gravity well", "kgw", "2.5 minute", "84 million", "segwit",
+        // P2Pool
+        "p2pool", "vertcoin p2pool",
+        // Explorers
+        "vtc explorer", "vertcoin explorer", "insight vtc",
+    ]
+});
+
 /// How-to query patterns
 static HOWTO_PATTERNS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(how\s+(do\s+i|to|can\s+i)|what'?s?\s+the\s+(best\s+)?way\s+to|implement|create|make|build|add|show\s+me\s+how)").unwrap()
@@ -343,7 +368,7 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 "Complete documentation retrieval in a single call. Returns full documentation \
                  content, code examples, declarations, and parameters—no follow-up calls needed. \
                  Auto-detects provider (Apple, Rust, Telegram, TON, Cocoon, MDN, React, Next.js, \
-                 Node.js, MLX, Hugging Face, QuickNode, Claude Agent SDK) from your query. \
+                 Node.js, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin) from your query. \
                  Top 5 results include complete documentation; remaining results include summaries. \
                  Use natural language: 'SwiftUI NavigationStack', 'Rust tokio spawn', 'Claude Agent SDK query function'."
                     .to_string(),
@@ -378,6 +403,10 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"query": "Bun SQLite database"}),
                 json!({"query": "Bun.spawn child process"}),
                 json!({"query": "bun test runner expect"}),
+                json!({"query": "Vertcoin getblockchaininfo"}),
+                json!({"query": "Verthash mining algorithm"}),
+                json!({"query": "vertcoin-cli sendtoaddress"}),
+                json!({"query": "Vertcoin RPC getbalance"}),
             ]),
             allowed_callers: None,
         },
@@ -485,6 +514,24 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
     for crate_name in RUST_CRATES.iter() {
         if contains_word(query, crate_name) {
             return (Some(ProviderType::Rust), Some(format!("rust:{}", crate_name)));
+        }
+    }
+
+    // Check for Vertcoin keywords (before TON/QuickNode since all are blockchain-related)
+    for keyword in VERTCOIN_KEYWORDS.iter() {
+        if contains_word(query, keyword) || query.contains(keyword) {
+            // Determine category based on query content
+            let tech = if query.contains("mining") || query.contains("verthash") || query.contains("hashrate") || query.contains("getblocktemplate") {
+                "vertcoin:mining"
+            } else if query.contains("wallet") || query.contains("balance") || query.contains("send") || query.contains("address") {
+                "vertcoin:wallet"
+            } else if query.contains("spec") || query.contains("segwit") || query.contains("block time") || query.contains("supply") {
+                "vertcoin:specs"
+            } else {
+                // Default to blockchain RPC
+                "vertcoin:blockchain"
+            };
+            return (Some(ProviderType::Vertcoin), Some(tech.to_string()));
         }
     }
 
@@ -843,6 +890,30 @@ async fn resolve_technology(
                 *context.state.active_unified_technology.write().await = Some(unified);
                 Ok((*provider, lang_name.to_string()))
             }
+            ProviderType::Vertcoin => {
+                // Parse category from tech_id (e.g., "vertcoin:blockchain" -> "Vertcoin (Blockchain RPC)")
+                let category_name = tech_id
+                    .strip_prefix("vertcoin:")
+                    .map(|c| match c {
+                        "blockchain" => "Vertcoin (Blockchain RPC)",
+                        "wallet" => "Vertcoin (Wallet)",
+                        "mining" => "Vertcoin (Verthash Mining)",
+                        "network" => "Vertcoin (Network)",
+                        "specs" => "Vertcoin (Specifications)",
+                        _ => "Vertcoin (Blockchain RPC)",
+                    })
+                    .unwrap_or("Vertcoin (Blockchain RPC)");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: category_name.to_string(),
+                    description: "Vertcoin blockchain RPC and Verthash mining documentation".to_string(),
+                    provider: ProviderType::Vertcoin,
+                    url: Some("https://github.com/vertcoin-project/vertcoin-core".to_string()),
+                    kind: multi_provider_client::types::TechnologyKind::VertcoinApi,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, category_name.to_string()))
+            }
         }
     } else {
         // No provider detected - check if there's an active technology, otherwise default to Apple/SwiftUI
@@ -963,6 +1034,8 @@ async fn execute_search_query(
         "huggingface", "hf", "transformers",
         // Claude Agent SDK provider names only - keep class names like "claudesdkclient", "claudeclient"
         "claude", "agent", "sdk", "claudeagentsdk",
+        // Vertcoin provider names
+        "vertcoin", "vtc", "verthash",
     ];
 
     let search_keywords: Vec<&str> = intent
@@ -991,6 +1064,7 @@ async fn execute_search_query(
         ProviderType::HuggingFace => search_huggingface(context, intent, &search_query, max_results).await,
         ProviderType::QuickNode => search_quicknode(context, &search_query, max_results).await,
         ProviderType::ClaudeAgentSdk => search_claude_agent_sdk(context, intent, &search_query, max_results).await,
+        ProviderType::Vertcoin => search_vertcoin(context, &search_query, max_results).await,
     }
 }
 
@@ -1839,6 +1913,62 @@ async fn search_claude_agent_sdk(
     Ok(results)
 }
 
+/// Search Vertcoin blockchain documentation
+async fn search_vertcoin(
+    context: &Arc<AppContext>,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    let items = match context.providers.vertcoin.search(query).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "Vertcoin search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full method documentation for top results
+        let (full_content, code_sample, parameters) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.vertcoin.get_method(&item.name).await {
+                Ok(method) => {
+                    let code = method.examples.first().map(|e| e.code.clone());
+                    let params: Vec<(String, String)> = method
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.description.clone()))
+                        .collect();
+                    let content = if !method.description.is_empty() {
+                        Some(method.description.clone())
+                    } else {
+                        None
+                    };
+                    (content, code, params)
+                }
+                Err(_) => (Some(item.description.clone()), None, Vec::new()),
+            }
+        } else {
+            (None, None, Vec::new())
+        };
+
+        results.push(DocResult {
+            title: item.name.clone(),
+            kind: item.kind.to_string(),
+            path: item.name,
+            summary: item.description.clone(),
+            platforms: Some("Vertcoin / Verthash".to_string()),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration: None,
+            parameters,
+        });
+    }
+
+    Ok(results)
+}
+
 /// Extract code sample from Apple symbol data
 fn extract_code_sample(symbol: &docs_mcp_client::types::SymbolData) -> Option<String> {
     // Look for code listings in primary content sections
@@ -2280,6 +2410,7 @@ fn detect_code_language(provider: &ProviderType, platforms: Option<&str>) -> &'s
             "typescript"
         }
         ProviderType::Cocoon => "text",
+        ProviderType::Vertcoin => "bash",
     }
 }
 

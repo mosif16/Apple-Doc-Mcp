@@ -8,6 +8,7 @@ pub mod rust;
 pub mod telegram;
 pub mod ton;
 pub mod types;
+pub mod vertcoin;
 pub mod web_frameworks;
 
 use std::collections::HashMap;
@@ -25,6 +26,7 @@ use rust::RustClient;
 use telegram::TelegramClient;
 use ton::TonClient;
 use types::{ProviderType, UnifiedFrameworkData, UnifiedSymbolData, UnifiedTechnology};
+use vertcoin::VertcoinClient;
 use web_frameworks::WebFrameworksClient;
 
 /// All provider clients for simultaneous access
@@ -41,6 +43,7 @@ pub struct ProviderClients {
     pub huggingface: HuggingFaceClient,
     pub quicknode: QuickNodeClient,
     pub claude_agent_sdk: ClaudeAgentSdkClient,
+    pub vertcoin: VertcoinClient,
 }
 
 impl Default for ProviderClients {
@@ -64,6 +67,7 @@ impl ProviderClients {
             huggingface: HuggingFaceClient::new(),
             quicknode: QuickNodeClient::new(),
             claude_agent_sdk: ClaudeAgentSdkClient::new(),
+            vertcoin: VertcoinClient::new(),
         }
     }
 
@@ -71,7 +75,7 @@ impl ProviderClients {
     pub async fn get_all_technologies(
         &self,
     ) -> Result<HashMap<ProviderType, Vec<UnifiedTechnology>>> {
-        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf, qn, agent_sdk) = tokio::join!(
+        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf, qn, agent_sdk, vtc) = tokio::join!(
             self.apple.get_technologies(),
             self.telegram.get_technologies(),
             self.ton.get_technologies(),
@@ -82,7 +86,8 @@ impl ProviderClients {
             self.mlx.get_technologies(),
             self.huggingface.get_technologies(),
             self.quicknode.get_technologies(),
-            self.claude_agent_sdk.get_technologies()
+            self.claude_agent_sdk.get_technologies(),
+            self.vertcoin.get_technologies()
         );
 
         let mut result = HashMap::new();
@@ -170,6 +175,16 @@ impl ProviderClients {
             );
         }
 
+        if let Ok(techs) = vtc {
+            result.insert(
+                ProviderType::Vertcoin,
+                techs
+                    .into_iter()
+                    .map(UnifiedTechnology::from_vertcoin)
+                    .collect(),
+            );
+        }
+
         Ok(result)
     }
 
@@ -229,6 +244,13 @@ impl ProviderClients {
                     .map(UnifiedTechnology::from_claude_agent_sdk)
                     .collect())
             }
+            ProviderType::Vertcoin => {
+                let techs = self.vertcoin.get_technologies().await?;
+                Ok(techs
+                    .into_iter()
+                    .map(UnifiedTechnology::from_vertcoin)
+                    .collect())
+            }
         }
     }
 
@@ -282,6 +304,10 @@ impl ProviderClients {
             ProviderType::ClaudeAgentSdk => {
                 let data = self.claude_agent_sdk.get_category(identifier).await?;
                 Ok(UnifiedFrameworkData::from_claude_agent_sdk(data))
+            }
+            ProviderType::Vertcoin => {
+                let data = self.vertcoin.get_category(identifier).await?;
+                Ok(UnifiedFrameworkData::from_vertcoin(data))
             }
         }
     }
@@ -365,6 +391,10 @@ impl ProviderClients {
                 let slug = parts.get(1).unwrap_or(&path);
                 let data = self.claude_agent_sdk.get_article(slug, language).await?;
                 Ok(UnifiedSymbolData::from_claude_agent_sdk(data))
+            }
+            ProviderType::Vertcoin => {
+                let data = self.vertcoin.get_method(path).await?;
+                Ok(UnifiedSymbolData::from_vertcoin(data))
             }
         }
     }

@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(go version:*)",
       "Bash(winget install:*)",
@@ -35,7 +34,9 @@
       "WebFetch(domain:www.yougetsignal.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(dir /b \"C:\\Users\\moham\\.claude\")",
-      "Bash(dir /b \"C:\\Users\\moham\\.claude\\skills\")"
-    ]
+      "Bash(dir /b \"C:\\Users\\moham\\.claude\\skills\")",
+      "Bash(cargo build:*)"
+    ],
+    "defaultMode": "bypassPermissions"
   }
 }

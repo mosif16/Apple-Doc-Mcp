@@ -17,6 +17,7 @@ Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that prov
 - **Hugging Face**: Transformers library and swift-transformers for LLM/AI development
 - **QuickNode**: Solana blockchain RPC documentation (HTTP methods, WebSocket, Marketplace add-ons)
 - **Claude Agent SDK**: TypeScript and Python SDKs for building AI agents with Claude Code capabilities
+- **Vertcoin**: GPU-mineable cryptocurrency with Verthash algorithm, JSON-RPC API documentation
 
 ## Build Commands
 
@@ -47,7 +48,7 @@ cargo clippy --all-targets
 │   ├── docs-mcp-client/       # HTTP client for Apple's documentation API
 │   ├── docs-mcp-core/         # Core logic: tools, state, services, transport
 │   ├── docs-mcp/          # MCP protocol bootstrap and config resolution
-│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, and Claude Agent SDK APIs
+│   └── multi-provider-client/   # Clients for Telegram, TON, Cocoon, Rust, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, Claude Agent SDK, and Vertcoin APIs
 │       ├── src/
 │       │   ├── telegram/        # Telegram Bot API client
 │       │   ├── ton/             # TON blockchain API client
@@ -59,6 +60,7 @@ cargo clippy --all-targets
 │       │   ├── huggingface/     # Hugging Face transformers client
 │       │   ├── quicknode/       # QuickNode Solana RPC documentation client
 │       │   ├── claude_agent_sdk/# Claude Agent SDK client (TypeScript + Python)
+│       │   ├── vertcoin/        # Vertcoin blockchain RPC documentation client
 │       │   ├── types.rs         # Unified types across all providers
 │       │   └── lib.rs           # ProviderClients aggregation
 ```
@@ -82,6 +84,7 @@ cargo clippy --all-targets
   - `HuggingFaceClient`: Transformers and swift-transformers documentation from `huggingface.co`
   - `QuickNodeClient`: Solana RPC documentation from `quicknode.com/docs/solana`
   - `ClaudeAgentSdkClient`: Claude Agent SDK documentation for TypeScript and Python from `docs.anthropic.com`
+  - `VertcoinClient`: Vertcoin blockchain RPC documentation with Verthash mining support
 
 ### Provider Architecture
 
@@ -96,6 +99,7 @@ pub enum ProviderType {
     Rust,
     Mdn,
     WebFrameworks,
+    Vertcoin,
     Mlx,
     HuggingFace,
     QuickNode,
@@ -114,6 +118,7 @@ pub struct ProviderClients {
     pub huggingface: HuggingFaceClient,
     pub quicknode: QuickNodeClient,
     pub claude_agent_sdk: ClaudeAgentSdkClient,
+    pub vertcoin: VertcoinClient,
 }
 ```
 
@@ -129,7 +134,7 @@ Each tool dispatches to the appropriate provider based on `active_provider` stat
 
 The `query` tool acts as an intelligent entry point that:
 1. Parses natural language queries to extract intent (how-to, reference, search)
-2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, Claude Agent SDK)
+2. Auto-detects the appropriate provider (Apple, Telegram, TON, Rust, Cocoon, MDN, Web Frameworks, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin)
 3. Auto-selects the relevant technology/framework
 4. Executes optimized search across the detected provider
 5. Fetches detailed documentation for top results
@@ -218,6 +223,14 @@ The `query` tool acts as an intelligent entry point that:
 - Content blocks: TextBlock, ToolUseBlock, ToolResultBlock
 - Authentication: ANTHROPIC_API_KEY, Bedrock, Vertex AI
 
+#### Vertcoin
+- **Blockchain RPC**: 80+ JSON-RPC methods (getblockchaininfo, getbalance, sendtoaddress, etc.)
+- **Wallet Methods**: Address management, transaction signing, wallet encryption
+- **Mining (Verthash)**: GPU-optimized ASIC-resistant mining documentation
+- **Network**: Peer management, node discovery, ban lists
+- **Specifications**: 2.5 minute block time, 84M supply, SegWit, Kimoto Gravity Well difficulty
+- CLI examples with vertcoin-cli and JSON-RPC curl commands
+
 ### Unified Query Tool Features
 
 The `query` tool implements advanced natural language processing:
@@ -250,6 +263,7 @@ Intelligently detects the target provider from query context:
 - **Hugging Face**: huggingface, transformers, automodel, autotokenizer, swift-transformers keywords
 - **QuickNode**: quicknode, solana, getaccountinfo, getbalance, lamports, pubkey keywords
 - **Claude Agent SDK**: claude, agent sdk, claudeagentsdk, claudesdkclient, query, mcp, hooks keywords
+- **Vertcoin**: vertcoin, vtc, verthash, vertcoin-cli, getblockchaininfo, getnewaddress, one click miner keywords
 
 #### Query Type Classification
 Three query types with specialized handling:
@@ -278,6 +292,9 @@ input_examples: Some(vec![
     json!({"query": "QuickNode getBalance"}),
     json!({"query": "Claude Agent SDK query function typescript"}),
     json!({"query": "agent sdk python ClaudeSDKClient"}),
+    json!({"query": "Vertcoin getblockchaininfo"}),
+    json!({"query": "Verthash mining algorithm"}),
+    json!({"query": "vertcoin-cli sendtoaddress"}),
 ])
 ```
 
@@ -333,6 +350,7 @@ All providers use two-tier caching:
 | Hugging Face docs | 1h | 24h |
 | QuickNode methods | 30min | 24h |
 | Claude Agent SDK docs | 24h | 24h |
+| Vertcoin RPC docs | 1h | 24h |
 
 ## Environment Variables
 
@@ -392,6 +410,15 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test query with Claude Agent SDK (Python)
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"agent sdk python ClaudeSDKClient"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Vertcoin (RPC)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Vertcoin getblockchaininfo"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Vertcoin (Mining)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Verthash mining algorithm"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Vertcoin (Wallet)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"vertcoin-cli sendtoaddress"}},"id":3}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## Adding a New Provider

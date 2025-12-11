@@ -9,7 +9,7 @@ use tracing::{debug, info, warn};
 use crate::state::{AppContext, TelemetryEntry};
 use time::OffsetDateTime;
 
-const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider documentation server. Use the `query` tool to retrieve official documentation for Apple platforms, Rust, Telegram Bot API, TON blockchain, Cocoon, MDN Web Docs, Web Frameworks (React, Next.js, Node.js), MLX (Apple Silicon ML), and Hugging Face (Transformers).
+const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider documentation server. Use the `query` tool to retrieve official documentation for Apple platforms, Rust, Telegram Bot API, TON blockchain, Cocoon, MDN Web Docs, Web Frameworks (React, Next.js, Node.js), MLX (Apple Silicon ML), Hugging Face (Transformers), QuickNode (Solana), Claude Agent SDK, and Vertcoin (cryptocurrency).
 
 ## How to Use
 
@@ -26,6 +26,8 @@ const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider docum
 - "Node.js fs readFile" → Node.js API documentation
 - "MLX array operations Swift" → MLX framework documentation
 - "Hugging Face AutoModel" → Transformers library documentation
+- "Vertcoin getblockchaininfo" → Vertcoin RPC method documentation
+- "Verthash mining setup" → Vertcoin mining specifications
 
 ## What You Get
 
@@ -54,7 +56,10 @@ For top results, the tool returns:
 - **MDN**: JavaScript, TypeScript, Web APIs, DOM documentation
 - **Web Frameworks**: React, Next.js, Node.js documentation with examples
 - **MLX**: Apple Silicon ML framework (Swift and Python)
-- **Hugging Face**: Transformers and swift-transformers for LLM development"#;
+- **Hugging Face**: Transformers and swift-transformers for LLM development
+- **QuickNode**: Solana blockchain RPC documentation
+- **Claude Agent SDK**: TypeScript and Python SDKs for AI agents
+- **Vertcoin**: GPU-mineable cryptocurrency with Verthash algorithm (80+ RPC methods)"#;
 
 pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
     let stdin = io::stdin();

@@ -13,6 +13,7 @@ use crate::quicknode::types::{QuickNodeCategory, QuickNodeMethod, QuickNodeTechn
 use crate::rust::types::{RustCategory, RustItem, RustTechnology};
 use crate::telegram::types::{TelegramCategory, TelegramItem, TelegramTechnology};
 use crate::ton::types::{TonCategory, TonEndpoint, TonTechnology};
+use crate::vertcoin::types::{VertcoinCategory, VertcoinMethod, VertcoinTechnology};
 use crate::web_frameworks::types::{
     CodeExample, WebFramework, WebFrameworkArticle, WebFrameworkTechnology,
 };
@@ -36,6 +37,8 @@ pub enum ProviderType {
     QuickNode,
     /// Claude Agent SDK - TypeScript and Python SDKs for building AI agents
     ClaudeAgentSdk,
+    /// Vertcoin - GPU-mineable cryptocurrency with Verthash algorithm
+    Vertcoin,
 }
 
 impl ProviderType {
@@ -53,6 +56,7 @@ impl ProviderType {
             Self::HuggingFace => "Hugging Face",
             Self::QuickNode => "QuickNode",
             Self::ClaudeAgentSdk => "Claude Agent SDK",
+            Self::Vertcoin => "Vertcoin",
         }
     }
 
@@ -70,6 +74,7 @@ impl ProviderType {
             Self::HuggingFace => "Hugging Face Transformers and Model Documentation",
             Self::QuickNode => "QuickNode Solana RPC Documentation",
             Self::ClaudeAgentSdk => "Claude Agent SDK for TypeScript and Python",
+            Self::Vertcoin => "Vertcoin Blockchain and Verthash Mining Documentation",
         }
     }
 }
@@ -115,6 +120,8 @@ pub enum TechnologyKind {
     QuickNodeApi,
     /// Claude Agent SDK library (TypeScript or Python)
     AgentSdkLibrary,
+    /// Vertcoin blockchain API (RPC, Wallet, Mining)
+    VertcoinApi,
 }
 
 impl UnifiedTechnology {
@@ -243,6 +250,17 @@ impl UnifiedTechnology {
             description: tech.description,
             url: Some(tech.url),
             kind: TechnologyKind::AgentSdkLibrary,
+        }
+    }
+
+    pub fn from_vertcoin(tech: VertcoinTechnology) -> Self {
+        Self {
+            provider: ProviderType::Vertcoin,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::VertcoinApi,
         }
     }
 }
@@ -497,6 +515,28 @@ impl UnifiedFrameworkData {
             sections: vec![],
         }
     }
+
+    pub fn from_vertcoin(data: VertcoinCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.name.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(item.kind.to_string()),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Vertcoin,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
 }
 
 /// Unified symbol/item data
@@ -587,6 +627,43 @@ pub enum SymbolContent {
         examples: Vec<AgentSdkExampleInfo>,
         parameters: Vec<AgentSdkParamInfo>,
     },
+    /// Vertcoin blockchain documentation
+    Vertcoin {
+        method_kind: String,
+        parameters: Vec<VertcoinParamInfo>,
+        returns: Option<VertcoinReturnInfo>,
+        examples: Vec<VertcoinExampleInfo>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VertcoinParamInfo {
+    pub name: String,
+    pub description: String,
+    pub param_type: String,
+    pub required: bool,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VertcoinReturnInfo {
+    pub type_name: String,
+    pub description: String,
+    pub fields: Vec<VertcoinFieldInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VertcoinFieldInfo {
+    pub name: String,
+    pub field_type: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VertcoinExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1091,6 +1168,58 @@ impl UnifiedSymbolData {
                     url: None,
                 })
                 .collect(),
+        }
+    }
+
+    pub fn from_vertcoin(data: VertcoinMethod) -> Self {
+        let parameters = data
+            .parameters
+            .into_iter()
+            .map(|p| VertcoinParamInfo {
+                name: p.name,
+                description: p.description,
+                param_type: p.param_type,
+                required: p.required,
+                default_value: p.default_value,
+            })
+            .collect();
+
+        let returns = data.returns.map(|r| VertcoinReturnInfo {
+            type_name: r.type_name,
+            description: r.description,
+            fields: r
+                .fields
+                .into_iter()
+                .map(|f| VertcoinFieldInfo {
+                    name: f.name,
+                    field_type: f.field_type,
+                    description: f.description,
+                })
+                .collect(),
+        });
+
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| VertcoinExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Vertcoin,
+            title: data.name,
+            description: data.description,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::Vertcoin {
+                method_kind: data.kind.to_string(),
+                parameters,
+                returns,
+                examples,
+            },
+            related: vec![],
         }
     }
 }
