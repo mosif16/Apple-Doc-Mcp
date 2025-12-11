@@ -6,6 +6,7 @@ use crate::claude_agent_sdk::types::{
     AgentSdkArticle, AgentSdkCategory, AgentSdkLanguage, AgentSdkTechnology,
 };
 use crate::cocoon::types::{CocoonDocument, CocoonSection, CocoonTechnology};
+use crate::cuda::types::{CudaCategory, CudaMethod, CudaTechnology};
 use crate::huggingface::types::{HfArticle, HfCategory, HfTechnology, HfTechnologyKind};
 use crate::mdn::types::{MdnArticle, MdnCategory, MdnTechnology};
 use crate::mlx::types::{MlxArticle, MlxCategory, MlxLanguage, MlxTechnology};
@@ -39,6 +40,8 @@ pub enum ProviderType {
     ClaudeAgentSdk,
     /// Vertcoin - GPU-mineable cryptocurrency with Verthash algorithm
     Vertcoin,
+    /// CUDA - NVIDIA GPU programming and kernel development
+    Cuda,
 }
 
 impl ProviderType {
@@ -57,6 +60,7 @@ impl ProviderType {
             Self::QuickNode => "QuickNode",
             Self::ClaudeAgentSdk => "Claude Agent SDK",
             Self::Vertcoin => "Vertcoin",
+            Self::Cuda => "CUDA",
         }
     }
 
@@ -75,6 +79,7 @@ impl ProviderType {
             Self::QuickNode => "QuickNode Solana RPC Documentation",
             Self::ClaudeAgentSdk => "Claude Agent SDK for TypeScript and Python",
             Self::Vertcoin => "Vertcoin Blockchain and Verthash Mining Documentation",
+            Self::Cuda => "CUDA GPU Programming and Kernel Development (RTX 3070/4090)",
         }
     }
 }
@@ -122,6 +127,8 @@ pub enum TechnologyKind {
     AgentSdkLibrary,
     /// Vertcoin blockchain API (RPC, Wallet, Mining)
     VertcoinApi,
+    /// CUDA GPU programming (Runtime API, Kernels, Libraries)
+    CudaApi,
 }
 
 impl UnifiedTechnology {
@@ -261,6 +268,17 @@ impl UnifiedTechnology {
             description: tech.description,
             url: Some(tech.url),
             kind: TechnologyKind::VertcoinApi,
+        }
+    }
+
+    pub fn from_cuda(tech: CudaTechnology) -> Self {
+        Self {
+            provider: ProviderType::Cuda,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::CudaApi,
         }
     }
 }
@@ -537,6 +555,28 @@ impl UnifiedFrameworkData {
             sections: vec![],
         }
     }
+
+    pub fn from_cuda(data: CudaCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.name.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(item.kind.to_string()),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Cuda,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
 }
 
 /// Unified symbol/item data
@@ -634,6 +674,13 @@ pub enum SymbolContent {
         returns: Option<VertcoinReturnInfo>,
         examples: Vec<VertcoinExampleInfo>,
     },
+    /// CUDA GPU programming documentation
+    Cuda {
+        method_kind: String,
+        parameters: Vec<CudaParamInfo>,
+        returns: Option<CudaReturnInfo>,
+        examples: Vec<CudaExampleInfo>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -661,6 +708,36 @@ pub struct VertcoinFieldInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VertcoinExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CudaParamInfo {
+    pub name: String,
+    pub description: String,
+    pub param_type: String,
+    pub required: bool,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CudaReturnInfo {
+    pub type_name: String,
+    pub description: String,
+    pub fields: Vec<CudaFieldInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CudaFieldInfo {
+    pub name: String,
+    pub field_type: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CudaExampleInfo {
     pub code: String,
     pub language: String,
     pub description: Option<String>,
@@ -1214,6 +1291,58 @@ impl UnifiedSymbolData {
             description: data.description,
             kind: Some(data.kind.to_string()),
             content: SymbolContent::Vertcoin {
+                method_kind: data.kind.to_string(),
+                parameters,
+                returns,
+                examples,
+            },
+            related: vec![],
+        }
+    }
+
+    pub fn from_cuda(data: CudaMethod) -> Self {
+        let parameters = data
+            .parameters
+            .into_iter()
+            .map(|p| CudaParamInfo {
+                name: p.name,
+                description: p.description,
+                param_type: p.param_type,
+                required: p.required,
+                default_value: p.default_value,
+            })
+            .collect();
+
+        let returns = data.returns.map(|r| CudaReturnInfo {
+            type_name: r.type_name,
+            description: r.description,
+            fields: r
+                .fields
+                .into_iter()
+                .map(|f| CudaFieldInfo {
+                    name: f.name,
+                    field_type: f.field_type,
+                    description: f.description,
+                })
+                .collect(),
+        });
+
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| CudaExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Cuda,
+            title: data.name,
+            description: data.description,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::Cuda {
                 method_kind: data.kind.to_string(),
                 parameters,
                 returns,

@@ -166,9 +166,9 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             ProviderType::TON => fetch_ton_info(&context, path).await,
             ProviderType::Cocoon => fetch_cocoon_info(&context, &active.identifier, path).await,
             ProviderType::Rust => fetch_rust_info(&context, &active.identifier, path).await,
-            // MDN, WebFrameworks, Mlx, HuggingFace, QuickNode, ClaudeAgentSdk, and Vertcoin not supported in batch documentation
+            // MDN, WebFrameworks, Mlx, HuggingFace, QuickNode, ClaudeAgentSdk, Vertcoin, and Cuda not supported in batch documentation
             ProviderType::Mdn | ProviderType::WebFrameworks | ProviderType::Mlx | ProviderType::HuggingFace
-            | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk | ProviderType::Vertcoin => {
+            | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk | ProviderType::Vertcoin | ProviderType::Cuda => {
                 Err(anyhow::anyhow!("Provider {} does not support batch documentation", provider.name()))
             }
         };

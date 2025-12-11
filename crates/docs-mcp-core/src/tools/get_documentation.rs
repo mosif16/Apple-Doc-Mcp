@@ -95,7 +95,7 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
         }
         ProviderType::Telegram | ProviderType::TON | ProviderType::Cocoon | ProviderType::Rust
         | ProviderType::Mdn | ProviderType::WebFrameworks | ProviderType::Mlx | ProviderType::HuggingFace
-        | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk | ProviderType::Vertcoin => {
+        | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk | ProviderType::Vertcoin | ProviderType::Cuda => {
             // For non-Apple providers, use active_unified_technology
             let unified = context
                 .state
@@ -120,8 +120,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
                 ProviderType::TON => handle_ton(&context, &active, &args).await,
                 ProviderType::Cocoon => handle_cocoon(&context, &active, &args).await,
                 ProviderType::Rust => handle_rust(&context, &active, &args).await,
-                // Mlx, HuggingFace, QuickNode, ClaudeAgentSdk, and Vertcoin use the unified query tool
-                ProviderType::Mlx | ProviderType::HuggingFace | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk | ProviderType::Vertcoin => {
+                // Mlx, HuggingFace, QuickNode, ClaudeAgentSdk, Vertcoin, and Cuda use the unified query tool
+                ProviderType::Mlx | ProviderType::HuggingFace | ProviderType::QuickNode | ProviderType::ClaudeAgentSdk | ProviderType::Vertcoin | ProviderType::Cuda => {
                     anyhow::bail!("Use the `query` tool for {} documentation", provider.name())
                 }
                 _ => unreachable!(),
