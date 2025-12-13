@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::io::{self, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tracing::{debug, info, warn};
 
 use crate::state::{AppContext, TelemetryEntry};
@@ -70,6 +70,12 @@ For top results, the tool returns:
 
 const DISABLE_FEEDBACK_PROMPT_ENV: &str = "DOCSMCP_DISABLE_FEEDBACK_PROMPT";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportFraming {
+    JsonLines,
+    ContentLength,
+}
+
 pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -77,15 +83,17 @@ pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
     let mut writer = stdout;
 
     let mut feedback_prompt_sent = false;
+    let mut framing: Option<TransportFraming> = None;
     let mut buffer = String::new();
     loop {
-        buffer.clear();
-        let bytes = reader.read_line(&mut buffer).await?;
-        if bytes == 0 {
+        let Some((payload, observed_framing)) = read_next_message(&mut reader).await? else {
             info!(target: "docs_mcp_transport", "STDIO closed; shutting down");
             break;
-        }
+        };
+        framing.get_or_insert(observed_framing);
 
+        buffer.clear();
+        buffer.push_str(&payload);
         debug!(target: "docs_mcp_transport", request = buffer.trim());
         let maybe_response = match serde_json::from_str::<RpcRequest>(&buffer) {
             Ok(request) => {
@@ -95,7 +103,9 @@ pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
                     && request.method == "notifications/initialized"
                 {
                     feedback_prompt_sent = true;
-                    if let Err(error) = send_feedback_prompt(&mut writer).await {
+                    if let Err(error) =
+                        send_feedback_prompt(&mut writer, framing.unwrap_or(TransportFraming::JsonLines)).await
+                    {
                         warn!(
                             target: "docs_mcp_transport",
                             error = %error,
@@ -113,12 +123,98 @@ pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
 
         if let Some(response) = maybe_response {
             let payload = serde_json::to_string(&response)?;
-            writer.write_all(payload.as_bytes()).await?;
-            writer.write_all(b"\n").await?;
-            writer.flush().await?;
+            write_response(
+                &mut writer,
+                framing.unwrap_or(TransportFraming::JsonLines),
+                &payload,
+            )
+            .await?;
         }
     }
 
+    Ok(())
+}
+
+async fn read_next_message<R>(reader: &mut BufReader<R>) -> Result<Option<(String, TransportFraming)>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut first_line = String::new();
+    loop {
+        first_line.clear();
+        let bytes = reader.read_line(&mut first_line).await?;
+        if bytes == 0 {
+            return Ok(None);
+        }
+
+        // Trim only line endings; preserve leading whitespace for JSON parse if present.
+        let trimmed = first_line.trim_end_matches(&['\r', '\n'][..]);
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // JSON-lines framing: message starts with JSON.
+        if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            return Ok(Some((first_line.clone(), TransportFraming::JsonLines)));
+        }
+
+        // Content-Length framing (LSP-style).
+        if let Some(length) = parse_content_length_header(trimmed) {
+            // Read remaining headers until blank line.
+            let mut line = String::new();
+            loop {
+                line.clear();
+                let bytes = reader.read_line(&mut line).await?;
+                if bytes == 0 {
+                    return Ok(None);
+                }
+                let header = line.trim_end_matches(&['\r', '\n'][..]);
+                if header.is_empty() {
+                    break;
+                }
+            }
+
+            let mut body = vec![0u8; length];
+            reader.read_exact(&mut body).await?;
+            let json = String::from_utf8(body)?;
+            return Ok(Some((json, TransportFraming::ContentLength)));
+        }
+
+        // Unknown non-JSON line: could be other header or noise; ignore.
+        debug!(
+            target: "docs_mcp_transport",
+            line = trimmed,
+            "Ignoring non-JSON line"
+        );
+    }
+}
+
+fn parse_content_length_header(line: &str) -> Option<usize> {
+    let (name, value) = line.split_once(':')?;
+    if !name.trim().eq_ignore_ascii_case("content-length") {
+        return None;
+    }
+    value.trim().parse::<usize>().ok()
+}
+
+async fn write_response<W>(writer: &mut W, framing: TransportFraming, json_payload: &str) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    match framing {
+        TransportFraming::JsonLines => {
+            writer.write_all(json_payload.as_bytes()).await?;
+            writer.write_all(b"\n").await?;
+        }
+        TransportFraming::ContentLength => {
+            let bytes = json_payload.as_bytes();
+            writer
+                .write_all(format!("Content-Length: {}\r\n\r\n", bytes.len()).as_bytes())
+                .await?;
+            writer.write_all(bytes).await?;
+        }
+    }
+    writer.flush().await?;
     Ok(())
 }
 
@@ -129,7 +225,7 @@ fn feedback_prompt_disabled() -> bool {
     }
 }
 
-async fn send_feedback_prompt<W>(writer: &mut W) -> Result<()>
+async fn send_feedback_prompt<W>(writer: &mut W, framing: TransportFraming) -> Result<()>
 where
     W: AsyncWrite + Unpin,
 {
@@ -145,15 +241,12 @@ where
         method: "notifications/message",
         params: json!({
             "level": "info",
-            "message": "Help improve docs-mcp: if anything was missing/slow/confusing, call the `submit_feedback` tool with examples (queries/symbols) and suggestions."
+            "data": "Help improve docs-mcp: if anything was missing/slow/confusing, call the `submit_feedback` tool with examples (queries/symbols) and suggestions."
         }),
     };
 
     let payload = serde_json::to_string(&notification)?;
-    writer.write_all(payload.as_bytes()).await?;
-    writer.write_all(b"\n").await?;
-    writer.flush().await?;
-    Ok(())
+    write_response(writer, framing, &payload).await
 }
 
 #[derive(Debug, Deserialize)]

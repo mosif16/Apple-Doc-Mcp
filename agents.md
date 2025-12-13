@@ -4,6 +4,7 @@
 - Added an automated feedback loop: MCP `submit_feedback` tool writes structured JSON into `Feedback/`, and the server prompts for feedback via initialization instructions + a `notifications/message` nudge after `notifications/initialized`.
 - Added `Feedback/README.md` with best practices for feedback ingestion and triage; `Feedback/.gitignore` keeps artifacts out of git.
 - Follow-up: fixed the workspace so `cargo clippy --all-targets -- -D warnings` and `cargo test --all` both pass (includes reducing dead code in `docs-mcp-core` tool module wiring, and consolidating clippy allowances + small refactors in `multi-provider-client`).
+- Fix: MCP stdio transport now supports both newline-delimited JSON and LSP-style `Content-Length` framing (and replies in the same framing) to avoid client startup failures where `tools/list` closed the transport.
 
 2025-10-20 (Codex agent):
 - Captured retrieval improvement opportunities for existing tools (discover_technologies, choose_technology, current_technology, search_symbols, get_documentation, how_do_i).
