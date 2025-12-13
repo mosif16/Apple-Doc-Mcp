@@ -7,7 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that provides access to developer documentation from multiple providers. It enables AI coding assistants to search, browse, and retrieve official documentation for:
 - **Apple**: SwiftUI, UIKit, Foundation, CoreML, Vision, and 60+ frameworks (including ML/AI)
 - **Telegram**: Bot API methods and types
-- **TON**: Blockchain API endpoints
+- **TON**: Comprehensive blockchain documentation including:
+  - TON API (tonapi.io REST endpoints)
+  - Smart contract languages (Tact, FunC, Tolk, Fift)
+  - Security best practices and vulnerability patterns
+  - Token standards (Jettons, NFTs, SBTs)
+  - TVM (TON Virtual Machine) documentation
+  - Wallet contracts and TON Connect
 - **Cocoon**: Confidential computing documentation
 - **Rust**: Standard library (std, core, alloc) and any crate from docs.rs
 - **MDN**: JavaScript, TypeScript, Web APIs, DOM documentation
@@ -77,7 +83,11 @@ cargo clippy --all-targets
 
 - **multi-provider-client**: HTTP clients for non-Apple documentation providers:
   - `TelegramClient`: Telegram Bot API methods and types from `core.telegram.org`
-  - `TonClient`: TON blockchain endpoints from `tonapi.io` OpenAPI spec
+  - `TonClient`: TON blockchain documentation with unified search across:
+    - tonapi.io REST API endpoints (OpenAPI spec)
+    - Security patterns and best practices (embedded knowledge base)
+    - Smart contract documentation (Tact, FunC, Tolk)
+    - Token standards (Jettons, NFTs, TON Connect)
   - `CocoonClient`: Cocoon documentation from `cocoon.org`
   - `RustClient`: Rust std library + any crate from `docs.rs`
   - `MdnClient`: JavaScript, TypeScript, Web APIs from `developer.mozilla.org`
@@ -160,10 +170,29 @@ The `query` tool acts as an intelligent entry point that:
 - Type definitions (Update, Message, User, etc.)
 - Parameter documentation with required/optional flags
 
-#### TON
-- Blockchain API endpoints organized by category
-- OpenAPI-based documentation
-- Request/response schema information
+#### TON (Telegram Open Network)
+- **TON API**: 100+ REST endpoints from tonapi.io (accounts, transactions, NFTs, jettons)
+- **Smart Contract Languages**:
+  - Tact: High-level TypeScript-like language with code examples
+  - FunC: Low-level C-like language documentation
+  - Tolk: Next-generation language replacing FunC
+  - Fift: Stack-based assembler language
+- **Security Best Practices** (embedded knowledge base):
+  - Integer handling (overflow/underflow protection)
+  - Message handling and replay attack prevention
+  - Gas management and unbounded loop patterns
+  - Access control and authorization
+  - Secure randomness and race condition avoidance
+  - Code upgrade vulnerability patterns
+  - Front-running protection
+- **Token Standards**:
+  - Jettons (TEP-74): Fungible tokens with transfer patterns
+  - NFT (TEP-62): Non-fungible token documentation
+  - SBT (TEP-85): Soul Bound Token standard
+- **TVM (TON Virtual Machine)**: Opcodes, instruction categories, gas costs
+- **Wallet Documentation**: v3r2, v4r2, v5 wallet versions and features
+- **TON Connect**: dApp wallet connection protocol with TypeScript examples
+- **Development Tools**: Blueprint framework, Sandbox testing
 
 #### Cocoon
 - Confidential computing documentation
@@ -271,7 +300,7 @@ Intelligently detects the target provider from query context:
 - **Apple**: SwiftUI, UIKit, iOS, macOS keywords + 60+ framework names (including CoreML, Vision, NaturalLanguage)
 - **Rust**: std, tokio, serde, and other popular crate names
 - **Telegram**: bot, sendmessage, telegram, webhook keywords
-- **TON**: blockchain, wallet, jetton, tonapi keywords
+- **TON**: ton, tact, func, tolk, jetton, tvm, cell, boc, tonconnect, security, blueprint, seqno keywords
 - **Cocoon**: confidential computing, TDX keywords
 - **MDN**: javascript, js, dom, fetch, promise, array, web, browser keywords
 - **React**: react, jsx, hook, usestate, useeffect, component keywords
@@ -425,6 +454,18 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test query with Hugging Face
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Hugging Face AutoModel from_pretrained"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with TON (security best practices)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"TON security best practices"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with TON (smart contracts)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"tact"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with TON (wallet)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"TON wallet"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with TON (jetton transfer)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"jetton transfer"}},"id":3}\n' | ./target/release/docs-mcp-cli
 
 # Test query with QuickNode (Solana)
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Solana getAccountInfo"}},"id":3}\n' | ./target/release/docs-mcp-cli

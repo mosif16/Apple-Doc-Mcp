@@ -150,11 +150,33 @@ static TELEGRAM_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
-/// TON-related keywords
+/// TON-related keywords (expanded for comprehensive coverage)
 static TON_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     vec![
-        "ton", "blockchain", "wallet", "jetton", "nft", "toncoin", "cell",
-        "boc", "getaccount", "gettransactions", "tonapi",
+        // Core TON terms
+        "ton", "toncoin", "tonapi", "tonkeeper", "tonconnect",
+        // Smart contract languages
+        "tact", "func", "tolk", "fift",
+        // Data structures
+        "cell", "slice", "builder", "boc", "bagofcells",
+        // Tokens and standards
+        "jetton", "tep74", "tep62", "tep85", "sbt",
+        // TVM (TON Virtual Machine)
+        "tvm", "opcode", "continuation", "gasless",
+        // Wallet operations
+        "wallet", "v3r2", "v4r2", "walletv5", "seqno",
+        // Transactions and messages
+        "sendmessage", "rawmessage", "internalMessage", "externalmessage",
+        // API operations
+        "getaccount", "gettransactions", "getbalance", "getstate",
+        // Security terms
+        "replayattack", "acceptmessage", "throwunless",
+        // Development tools
+        "blueprint", "sandbox", "emulator",
+        // Network terms
+        "masterchain", "workchain", "shardchain",
+        // Common operations
+        "deployer", "staking", "validator",
     ]
 });
 
@@ -433,6 +455,14 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"query": "Rust std HashMap insert"}),
                 json!({"query": "Telegram Bot API sendMessage"}),
                 json!({"query": "how to implement CoreData fetch requests"}),
+                // TON blockchain examples
+                json!({"query": "TON Tact smart contract"}),
+                json!({"query": "TON jetton transfer"}),
+                json!({"query": "TON security best practices"}),
+                json!({"query": "TON FunC recv_internal"}),
+                json!({"query": "TON wallet v5"}),
+                json!({"query": "TVM gas costs"}),
+                // Other providers
                 json!({"query": "Solana getAccountInfo"}),
                 json!({"query": "QuickNode getBalance"}),
                 json!({"query": "Claude Agent SDK query function typescript"}),
@@ -1513,13 +1543,14 @@ async fn search_telegram(
     Ok(results)
 }
 
-/// Search TON API
+/// Search TON documentation (API, security patterns, docs articles)
 async fn search_ton(
     context: &Arc<AppContext>,
     query: &str,
     max_results: usize,
 ) -> Result<Vec<DocResult>> {
-    let items = match context.providers.ton.search(query).await {
+    // Use the unified search_all method that searches API, security patterns, and documentation
+    let items = match context.providers.ton.search_all(query).await {
         Ok(items) => items,
         Err(e) => {
             tracing::warn!(error = %e, "TON search failed, returning empty results");
@@ -1531,23 +1562,46 @@ async fn search_ton(
         .into_iter()
         .take(max_results)
         .map(|item| {
-            let summary = item.summary.clone().unwrap_or_else(|| item.description.clone().unwrap_or_default());
-            let parameters: Vec<(String, String)> = item
-                .parameters
-                .iter()
-                .map(|p| (p.name.clone(), p.description.clone().unwrap_or_default()))
+            // Format code examples if any
+            let code_sample = item.code_examples.first().map(|ex| {
+                format!("```{}\n{}\n```", ex.language, ex.code)
+            });
+
+            // Determine the kind based on result type
+            let kind = item.result_type.name().to_string();
+
+            // Build related APIs from code examples descriptions
+            let related_apis: Vec<String> = item.code_examples.iter()
+                .filter_map(|ex| ex.description.clone())
+                .take(5)
                 .collect();
+
+            // Format full content with code examples for detailed results
+            let full_content = if item.code_examples.is_empty() {
+                item.description.clone()
+            } else {
+                let mut content = item.description.clone();
+                for ex in &item.code_examples {
+                    if let Some(desc) = &ex.description {
+                        content.push_str(&format!("\n\n**{}**:\n```{}\n{}\n```", desc, ex.language, ex.code));
+                    } else {
+                        content.push_str(&format!("\n\n```{}\n{}\n```", ex.language, ex.code));
+                    }
+                }
+                content
+            };
+
             DocResult {
-                title: item.operation_id.clone(),
-                kind: item.method.to_uppercase(),
-                path: item.operation_id,
-                summary: summary.clone(),
-                platforms: Some("TON API".to_string()),
-                code_sample: None,
-                related_apis: item.parameters.iter().take(8).map(|p| p.name.clone()).collect(),
-                full_content: Some(summary),
+                title: item.title.clone(),
+                kind,
+                path: item.id.clone(),
+                summary: item.description.clone(),
+                platforms: Some(format!("TON ({})", item.source.name())),
+                code_sample,
+                related_apis,
+                full_content: Some(full_content),
                 declaration: None,
-                parameters,
+                parameters: vec![],
             }
         })
         .collect();
