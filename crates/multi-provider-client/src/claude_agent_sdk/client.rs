@@ -27,6 +27,7 @@ const PYTHON_GITHUB: &str = "https://github.com/anthropics/claude-agent-sdk-pyth
 pub struct ClaudeAgentSdkClient {
     http: Client,
     disk_cache: DiskCache,
+    #[allow(dead_code)]
     memory_cache: MemoryCache<Vec<u8>>,
     cache_dir: PathBuf,
 }

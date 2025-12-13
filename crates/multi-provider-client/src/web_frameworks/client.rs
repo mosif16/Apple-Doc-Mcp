@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::cmp::Reverse;
 use std::path::PathBuf;
 use std::time::Duration as StdDuration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use directories::ProjectDirs;
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -168,7 +168,7 @@ impl WebFrameworksClient {
         }
 
         // Build index from known React API pages
-        let index = self.build_react_index().await;
+        let index = self.build_react_index();
         let _ = self
             .disk_cache
             .store("react_index.json", index.clone())
@@ -179,7 +179,7 @@ impl WebFrameworksClient {
     }
 
     /// Build React search index
-    async fn build_react_index(&self) -> Vec<WebFrameworkSearchEntry> {
+    fn build_react_index(&self) -> Vec<WebFrameworkSearchEntry> {
         // Predefined React API entries based on react.dev structure
         vec![
             // Hooks
@@ -362,7 +362,7 @@ impl WebFrameworksClient {
             return Ok(());
         }
 
-        let index = self.build_nextjs_index().await;
+        let index = self.build_nextjs_index();
         let _ = self
             .disk_cache
             .store("nextjs_index.json", index.clone())
@@ -372,7 +372,7 @@ impl WebFrameworksClient {
         Ok(())
     }
 
-    async fn build_nextjs_index(&self) -> Vec<WebFrameworkSearchEntry> {
+    fn build_nextjs_index(&self) -> Vec<WebFrameworkSearchEntry> {
         // Predefined Next.js docs entries
         vec![
             // App Router
@@ -566,7 +566,7 @@ impl WebFrameworksClient {
                 .map(|m| WebFrameworkSearchEntry {
                     framework: WebFramework::NodeJs,
                     slug: format!("api/{}", m.name),
-                    title: m.displayName.clone().unwrap_or_else(|| m.name.clone()),
+                    title: m.display_name.clone().unwrap_or_else(|| m.name.clone()),
                     description: m.desc.clone().unwrap_or_default(),
                     url: format!("https://nodejs.org/api/{}.html", m.name),
                     category: Some("Module".to_string()),
@@ -750,7 +750,7 @@ impl WebFrameworksClient {
             return Ok(());
         }
 
-        let index = self.build_bun_index().await;
+        let index = self.build_bun_index();
         let _ = self
             .disk_cache
             .store("bun_index.json", index.clone())
@@ -761,7 +761,7 @@ impl WebFrameworksClient {
     }
 
     /// Build comprehensive Bun search index
-    async fn build_bun_index(&self) -> Vec<WebFrameworkSearchEntry> {
+    fn build_bun_index(&self) -> Vec<WebFrameworkSearchEntry> {
         vec![
             // ==================== Runtime APIs ====================
             // Bun global object
@@ -1136,8 +1136,7 @@ impl WebFrameworksClient {
             .extract_text(&document, "h1, .docs-title, article h1")
             .unwrap_or_else(|| {
                 // Try to get title from the slug
-                slug.split('/')
-                    .last()
+                slug.split('/').next_back()
                     .unwrap_or("Bun")
                     .replace('-', " ")
                     .replace('#', " - ")
@@ -1146,7 +1145,7 @@ impl WebFrameworksClient {
         // Description from first paragraph or meta
         let description = self
             .extract_text(&document, "article > p:first-of-type, .docs-content > p:first-of-type, main p:first-of-type")
-            .unwrap_or_else(|| format!("Bun documentation for {}", title));
+            .unwrap_or_else(|| format!("Bun documentation for {title}"));
 
         // Extract code examples - Bun docs use various code block styles
         let examples = self.extract_bun_code_examples(&document);
@@ -1173,6 +1172,7 @@ impl WebFrameworksClient {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn extract_bun_code_examples(&self, document: &Html) -> Vec<CodeExample> {
         let mut examples = Vec::new();
 
@@ -1227,11 +1227,10 @@ impl WebFrameworksClient {
                         .prev_siblings()
                         .filter_map(scraper::ElementRef::wrap)
                         .find(|e| {
-                            e.value().name() == "div"
-                                && e.value()
-                                    .attr("class")
-                                    .map(|c| c.contains("filename") || c.contains("file-name"))
-                                    .unwrap_or(false)
+                                    e.value().name() == "div"
+                                        && e.value()
+                                            .attr("class")
+                                            .is_some_and(|c| c.contains("filename") || c.contains("file-name"))
                         })
                         .map(|e| e.text().collect::<String>().trim().to_string());
 
@@ -1266,7 +1265,7 @@ impl WebFrameworksClient {
         }
 
         // Sort by quality score
-        examples.sort_by(|a, b| b.quality_score().cmp(&a.quality_score()));
+        examples.sort_by_key(|example| Reverse(example.quality_score()));
 
         // Limit to 5 best examples
         examples.truncate(5);
@@ -1276,6 +1275,7 @@ impl WebFrameworksClient {
 
     // ==================== HELPERS ====================
 
+    #[allow(clippy::unused_self)]
     fn extract_text(&self, document: &Html, selector_str: &str) -> Option<String> {
         if let Ok(selector) = Selector::parse(selector_str) {
             document
@@ -1288,6 +1288,7 @@ impl WebFrameworksClient {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn extract_code_examples(&self, document: &Html, default_lang: &str) -> Vec<CodeExample> {
         let mut examples = Vec::new();
 
@@ -1333,11 +1334,10 @@ impl WebFrameworksClient {
                         .prev_siblings()
                         .filter_map(scraper::ElementRef::wrap)
                         .find(|e| {
-                            e.value().name() == "div"
-                                && e.value()
-                                    .attr("class")
-                                    .map(|c| c.contains("filename"))
-                                    .unwrap_or(false)
+                                    e.value().name() == "div"
+                                        && e.value()
+                                            .attr("class")
+                                            .is_some_and(|c| c.contains("filename"))
                         })
                         .map(|e| e.text().collect::<String>().trim().to_string());
 
@@ -1366,7 +1366,7 @@ impl WebFrameworksClient {
         }
 
         // Sort by quality score
-        examples.sort_by(|a, b| b.quality_score().cmp(&a.quality_score()));
+        examples.sort_by_key(|example| Reverse(example.quality_score()));
 
         examples
     }

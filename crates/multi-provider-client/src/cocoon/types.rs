@@ -106,8 +106,8 @@ impl CocoonTechnology {
 pub fn extract_markdown_title(content: &str) -> String {
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("# ") {
-            return trimmed[2..].trim().to_string();
+        if let Some(stripped) = trimmed.strip_prefix("# ") {
+            return stripped.trim().to_string();
         }
     }
     String::new()

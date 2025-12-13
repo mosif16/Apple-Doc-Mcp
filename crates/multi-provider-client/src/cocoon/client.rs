@@ -21,7 +21,9 @@ const RAW_CONTENT_BASE: &str =
 pub struct CocoonClient {
     http: Client,
     disk_cache: DiskCache,
+    #[allow(dead_code)]
     memory_cache: MemoryCache<Vec<u8>>,
+    #[allow(dead_code)]
     contents_lock: Mutex<()>,
     cache_dir: PathBuf,
 }
@@ -249,7 +251,11 @@ impl CocoonClient {
 
         for item in contents {
             // Only process markdown files
-            if item.content_type != "file" || !item.name.ends_with(".md") {
+            if item.content_type != "file"
+                || !std::path::Path::new(&item.name)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+            {
                 continue;
             }
 

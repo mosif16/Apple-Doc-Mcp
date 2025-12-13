@@ -4,7 +4,6 @@ use std::time::Duration as StdDuration;
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use reqwest::Client;
-use scraper::{Html, Selector};
 use tokio::sync::Mutex;
 use tracing::{debug, instrument, warn};
 

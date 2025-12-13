@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration as StdDuration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use directories::ProjectDirs;
 use reqwest::Client;
 use scraper::{Html, Selector};

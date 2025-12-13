@@ -4,20 +4,19 @@ use anyhow::{anyhow, Result};
 
 use crate::state::{AppContext, ToolContent, ToolEntry, ToolHandler, ToolResponse};
 
-mod batch_documentation;
-mod choose_technology;
 mod current_technology;
 mod discover;
 mod get_documentation;
-mod how_do_i;
 mod query;
 mod search_symbols;
+mod submit_feedback;
 
 pub async fn register_tools(context: Arc<AppContext>) {
     // Register only the unified query tool
     // Other tools are kept in the codebase for reference but not exposed via MCP
     let tools = [
         query::definition(),
+        submit_feedback::definition(),
     ];
 
     let registry = context.tools.clone();

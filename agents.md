@@ -1,5 +1,10 @@
 ⚠️ MANDATORY: Every agent who touches this repository must review and update this document before finishing their session. Keeping it current is a strict requirement—do not skip this step.
 
+2025-12-13 (Codex agent):
+- Added an automated feedback loop: MCP `submit_feedback` tool writes structured JSON into `Feedback/`, and the server prompts for feedback via initialization instructions + a `notifications/message` nudge after `notifications/initialized`.
+- Added `Feedback/README.md` with best practices for feedback ingestion and triage; `Feedback/.gitignore` keeps artifacts out of git.
+- Follow-up: fixed the workspace so `cargo clippy --all-targets -- -D warnings` and `cargo test --all` both pass (includes reducing dead code in `docs-mcp-core` tool module wiring, and consolidating clippy allowances + small refactors in `multi-provider-client`).
+
 2025-10-20 (Codex agent):
 - Captured retrieval improvement opportunities for existing tools (discover_technologies, choose_technology, current_technology, search_symbols, get_documentation, how_do_i).
 - Follow-ups to evaluate: richer search ranking features in `search_symbols` (token proximity, synonyms), deeper metadata extraction in `get_documentation` (parameters, sample code from topic references), and dynamic fallback content for `how_do_i` when curated recipes are missing.

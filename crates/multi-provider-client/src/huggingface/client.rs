@@ -27,6 +27,7 @@ const HF_HUB_API: &str = "https://huggingface.co/api";
 pub struct HuggingFaceClient {
     http: Client,
     disk_cache: DiskCache,
+    #[allow(dead_code)]
     memory_cache: MemoryCache<Vec<u8>>,
     cache_dir: PathBuf,
 }

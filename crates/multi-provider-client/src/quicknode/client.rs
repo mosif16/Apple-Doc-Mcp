@@ -10,7 +10,7 @@ use tracing::{debug, instrument, warn};
 
 use super::types::{
     QuickNodeCategory, QuickNodeCategoryItem, QuickNodeExample, QuickNodeMethod,
-    QuickNodeMethodKind, QuickNodeParameter, QuickNodeReturnField, QuickNodeReturnType,
+    QuickNodeMethodKind, QuickNodeParameter, QuickNodeReturnType,
     QuickNodeTechnology, SolanaMethodIndex, SOLANA_HTTP_METHODS, SOLANA_MARKETPLACE_ADDONS,
     SOLANA_WEBSOCKET_METHODS,
 };
@@ -297,10 +297,10 @@ impl QuickNodeClient {
         }
 
         // Common patterns: "name (type) - description" or "name: type - description"
-        let parts: Vec<&str> = text.splitn(2, |c| c == '-' || c == ':').collect();
+        let parts: Vec<&str> = text.splitn(2, |c| ['-', ':'].contains(&c)).collect();
         if parts.len() >= 2 {
             let name_type = parts[0].trim();
-            let description = parts.get(1).map(|s| s.trim()).unwrap_or("");
+            let description = parts.get(1).map_or("", |s| s.trim());
 
             // Try to extract name and type
             if let Some((name, param_type)) = self.extract_name_type(name_type) {
@@ -405,10 +405,11 @@ impl QuickNodeClient {
                     "rust"
                 } else if class.contains("ruby") || class.contains("rb") {
                     "ruby"
-                } else if class.contains("curl") || class.contains("bash") || class.contains("sh")
+                } else if class.contains("curl")
+                    || class.contains("bash")
+                    || class.contains("sh")
+                    || trimmed.starts_with("curl")
                 {
-                    "bash"
-                } else if trimmed.starts_with("curl") {
                     "bash"
                 } else if trimmed.contains("fetch(") || trimmed.contains("const ") {
                     "javascript"

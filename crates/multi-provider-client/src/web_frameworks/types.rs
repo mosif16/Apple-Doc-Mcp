@@ -210,8 +210,8 @@ pub struct WebFrameworkSearchEntry {
 #[derive(Debug, Clone, Deserialize)]
 pub struct NodeApiModule {
     pub name: String,
-    #[serde(default)]
-    pub displayName: Option<String>,
+    #[serde(default, rename = "displayName")]
+    pub display_name: Option<String>,
     #[serde(default)]
     pub desc: Option<String>,
     #[serde(default)]

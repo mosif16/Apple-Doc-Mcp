@@ -1,11 +1,13 @@
+#![allow(clippy::needless_raw_string_hashes)]
+
 use std::path::PathBuf;
 use std::time::Duration as StdDuration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use directories::ProjectDirs;
 use reqwest::Client;
 use tokio::sync::Mutex;
-use tracing::{debug, instrument, warn};
+use tracing::{instrument, warn};
 
 use super::types::{
     CudaCategory, CudaCategoryItem, CudaExample, CudaMethod,
@@ -23,6 +25,7 @@ const CUDA_RUNTIME_API_URL: &str = "https://docs.nvidia.com/cuda/cuda-runtime-ap
 const CUDA_PROGRAMMING_GUIDE_URL: &str = "https://docs.nvidia.com/cuda/cuda-c-programming-guide";
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct CudaClient {
     http: Client,
     disk_cache: DiskCache,

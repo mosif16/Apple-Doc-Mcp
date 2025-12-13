@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tracing::{debug, info, warn};
 
 use crate::state::{AppContext, TelemetryEntry};
@@ -14,6 +14,13 @@ const SERVER_INSTRUCTIONS: &str = r#"You are connected to a multi-provider docum
 ## How to Use
 
 **Single tool, complete context:** The `query` tool returns full documentation inline—no follow-up calls needed.
+
+## Feedback (Helps Us Improve)
+
+If you notice missing coverage, irrelevant search results, formatting issues, or performance problems, please call the `submit_feedback` tool with:
+- a short summary of what happened
+- example queries/symbols that failed
+- what you'd like to see improved
 
 **Natural language queries work best:**
 - "SwiftUI NavigationStack" → Apple SwiftUI docs with code samples
@@ -61,12 +68,15 @@ For top results, the tool returns:
 - **Claude Agent SDK**: TypeScript and Python SDKs for AI agents
 - **Vertcoin**: GPU-mineable cryptocurrency with Verthash algorithm (80+ RPC methods)"#;
 
+const DISABLE_FEEDBACK_PROMPT_ENV: &str = "DOCSMCP_DISABLE_FEEDBACK_PROMPT";
+
 pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut reader = BufReader::new(stdin);
     let mut writer = stdout;
 
+    let mut feedback_prompt_sent = false;
     let mut buffer = String::new();
     loop {
         buffer.clear();
@@ -78,7 +88,23 @@ pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
 
         debug!(target: "docs_mcp_transport", request = buffer.trim());
         let maybe_response = match serde_json::from_str::<RpcRequest>(&buffer) {
-            Ok(request) => handle_request(context.clone(), request).await,
+            Ok(request) => {
+                if !feedback_prompt_sent
+                    && !feedback_prompt_disabled()
+                    && request.id.is_none()
+                    && request.method == "notifications/initialized"
+                {
+                    feedback_prompt_sent = true;
+                    if let Err(error) = send_feedback_prompt(&mut writer).await {
+                        warn!(
+                            target: "docs_mcp_transport",
+                            error = %error,
+                            "Failed to send feedback prompt notification"
+                        );
+                    }
+                }
+                handle_request(context.clone(), request).await
+            }
             Err(error) => {
                 warn!(target: "docs_mcp_transport", error = %error, "Failed to parse request");
                 Some(RpcResponse::error(None, -32700, "Parse error"))
@@ -93,6 +119,40 @@ pub async fn serve_stdio(context: Arc<AppContext>) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn feedback_prompt_disabled() -> bool {
+    match std::env::var(DISABLE_FEEDBACK_PROMPT_ENV) {
+        Ok(value) => value == "1" || value.eq_ignore_ascii_case("true"),
+        Err(_) => false,
+    }
+}
+
+async fn send_feedback_prompt<W>(writer: &mut W) -> Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    #[derive(Serialize)]
+    struct RpcNotification<'a> {
+        jsonrpc: &'static str,
+        method: &'a str,
+        params: serde_json::Value,
+    }
+
+    let notification = RpcNotification {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: json!({
+            "level": "info",
+            "message": "Help improve docs-mcp: if anything was missing/slow/confusing, call the `submit_feedback` tool with examples (queries/symbols) and suggestions."
+        }),
+    };
+
+    let payload = serde_json::to_string(&notification)?;
+    writer.write_all(payload.as_bytes()).await?;
+    writer.write_all(b"\n").await?;
+    writer.flush().await?;
     Ok(())
 }
 

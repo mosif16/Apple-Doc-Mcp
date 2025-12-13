@@ -1805,12 +1805,11 @@ async fn search_mlx(
         .technology
         .as_ref()
         .and_then(|t| t.strip_prefix("mlx:"))
-        .map(|l| match l {
+        .and_then(|l| match l {
             "swift" => Some(MlxLanguage::Swift),
             "python" => Some(MlxLanguage::Python),
             _ => None,
-        })
-        .flatten();
+        });
 
     let items = match context.providers.mlx.search(query, language).await {
         Ok(items) => items,
@@ -1871,13 +1870,12 @@ async fn search_huggingface(
         .technology
         .as_ref()
         .and_then(|t| t.strip_prefix("hf:"))
-        .map(|tech| match tech {
+        .and_then(|tech| match tech {
             "swift-transformers" => Some(HfTechnologyKind::SwiftTransformers),
             "transformers" => Some(HfTechnologyKind::Transformers),
             "models" => Some(HfTechnologyKind::Models),
             _ => None,
-        })
-        .flatten();
+        });
 
     let items = match context.providers.huggingface.search(query, technology).await {
         Ok(items) => items,
@@ -1999,12 +1997,11 @@ async fn search_claude_agent_sdk(
         .technology
         .as_ref()
         .and_then(|t| t.strip_prefix("agent-sdk:"))
-        .map(|l| match l {
+        .and_then(|l| match l {
             "python" => Some(AgentSdkLanguage::Python),
             "typescript" => Some(AgentSdkLanguage::TypeScript),
             _ => None,
-        })
-        .flatten();
+        });
 
     let items = match context.providers.claude_agent_sdk.search(query, language).await {
         Ok(items) => items,

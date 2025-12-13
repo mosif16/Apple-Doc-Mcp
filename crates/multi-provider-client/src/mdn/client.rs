@@ -406,8 +406,7 @@ impl MdnClient {
                     if section
                         .section_type
                         .as_deref()
-                        .map(|t| t.contains("syntax"))
-                        .unwrap_or(false)
+                        .is_some_and(|t| t.contains("syntax"))
                     {
                         syntax = Some(content.clone());
                     }

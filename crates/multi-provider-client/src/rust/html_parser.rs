@@ -141,10 +141,7 @@ fn extract_text_preserving_structure(element: &scraper::ElementRef) -> String {
                     }
                     result.push('\n');
                 }
-                "pre" | "code" => {
-                    // Skip code blocks in main documentation
-                    continue;
-                }
+                "pre" | "code" => {}
                 "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                     result.push_str("\n## ");
                     result.push_str(&clean_text(&element_ref.text().collect::<String>()));

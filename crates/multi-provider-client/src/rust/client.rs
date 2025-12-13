@@ -330,7 +330,7 @@ impl RustClient {
                         is_detailed: true,
                     });
                 }
-                _ => continue,
+                _ => {}
             }
         }
 
@@ -377,6 +377,7 @@ impl RustClient {
     }
 
     /// Fetch item with detailed documentation
+    #[allow(clippy::too_many_arguments)]
     async fn fetch_item_with_details(
         &self,
         name: &str,
@@ -585,7 +586,7 @@ impl RustClient {
 
                 // Bonus for matching multiple terms
                 if matched_terms > 1 {
-                    score += matched_terms as i32 * 5;
+                    score += matched_terms * 5;
                 }
 
                 let item = RustItem::from_search_entry(entry, crate_name, &crate_info.version);
@@ -966,8 +967,10 @@ impl RustClient {
             element
                 .select(&kind_selector)
                 .next()
-                .map(|e| e.text().collect::<String>().trim().to_lowercase())
-                .unwrap_or_else(|| "module".to_string())
+                .map_or_else(
+                    || "module".to_string(),
+                    |e| e.text().collect::<String>().trim().to_lowercase(),
+                )
         } else {
             "module".to_string()
         };
@@ -1042,8 +1045,6 @@ impl RustClient {
                     RustItemKind::Trait
                 } else if href.contains("fn.") {
                     RustItemKind::Function
-                } else if href.contains("/index.html") {
-                    RustItemKind::Module
                 } else {
                     RustItemKind::Module
                 }
@@ -1051,7 +1052,6 @@ impl RustClient {
         };
 
         // Get description from the next <dd> sibling
-        let dd_selector = Selector::parse("dd").ok()?;
         let desc = dt_element
             .next_siblings()
             .filter_map(scraper::ElementRef::wrap)
@@ -1207,7 +1207,10 @@ fn parse_rustdoc_index_format(data: &Value, _crate_name: &str) -> Vec<RustSearch
         let len = types.len().min(names.len());
 
         for i in 0..len {
-            let type_id = types[i].as_u64().unwrap_or(0) as u8;
+            let type_id = types[i]
+                .as_u64()
+                .and_then(|value| u8::try_from(value).ok())
+                .unwrap_or(0);
             let name = names[i].as_str().unwrap_or("").to_string();
             let path = paths
                 .and_then(|p| p.get(i))

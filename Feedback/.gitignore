@@ -1,0 +1,5 @@
+# Keep the directory in git, but don't commit submitted feedback artifacts.
+*
+!.gitignore
+!README.md
+

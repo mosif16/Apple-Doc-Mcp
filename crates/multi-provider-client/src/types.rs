@@ -3,20 +3,20 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::claude_agent_sdk::types::{
-    AgentSdkArticle, AgentSdkCategory, AgentSdkLanguage, AgentSdkTechnology,
+    AgentSdkArticle, AgentSdkCategory, AgentSdkTechnology,
 };
 use crate::cocoon::types::{CocoonDocument, CocoonSection, CocoonTechnology};
 use crate::cuda::types::{CudaCategory, CudaMethod, CudaTechnology};
-use crate::huggingface::types::{HfArticle, HfCategory, HfTechnology, HfTechnologyKind};
-use crate::mdn::types::{MdnArticle, MdnCategory, MdnTechnology};
-use crate::mlx::types::{MlxArticle, MlxCategory, MlxLanguage, MlxTechnology};
+use crate::huggingface::types::{HfArticle, HfCategory, HfTechnology};
+use crate::mdn::types::{MdnArticle, MdnTechnology};
+use crate::mlx::types::{MlxArticle, MlxCategory, MlxTechnology};
 use crate::quicknode::types::{QuickNodeCategory, QuickNodeMethod, QuickNodeTechnology};
 use crate::rust::types::{RustCategory, RustItem, RustTechnology};
 use crate::telegram::types::{TelegramCategory, TelegramItem, TelegramTechnology};
 use crate::ton::types::{TonCategory, TonEndpoint, TonTechnology};
 use crate::vertcoin::types::{VertcoinCategory, VertcoinMethod, VertcoinTechnology};
 use crate::web_frameworks::types::{
-    CodeExample, WebFramework, WebFrameworkArticle, WebFrameworkTechnology,
+    WebFrameworkArticle, WebFrameworkTechnology,
 };
 
 /// Provider type enum for identifying documentation sources

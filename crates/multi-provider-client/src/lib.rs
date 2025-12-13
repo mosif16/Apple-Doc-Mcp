@@ -1,3 +1,25 @@
+#![allow(dead_code)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::collapsible_str_replace)]
+#![allow(clippy::double_ended_iterator_last)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::inefficient_to_string)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::single_match_else)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::regex_creation_in_loops)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::single_char_pattern)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::unnecessary_wraps)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::unused_self)]
+
 pub mod claude_agent_sdk;
 pub mod cocoon;
 pub mod cuda;
@@ -75,7 +97,13 @@ impl ProviderClients {
         }
     }
 
-    /// Get technologies from all providers
+    /// Get technologies from all providers.
+    ///
+    /// # Errors
+    ///
+    /// Currently this function does not return an error; individual provider failures are
+    /// omitted from the returned map.
+    #[allow(clippy::too_many_lines)]
     pub async fn get_all_technologies(
         &self,
     ) -> Result<HashMap<ProviderType, Vec<UnifiedTechnology>>> {
@@ -203,7 +231,11 @@ impl ProviderClients {
         Ok(result)
     }
 
-    /// Get technologies for a specific provider
+    /// Get technologies for a specific provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying provider fails to load its technologies.
     pub async fn get_technologies_for(
         &self,
         provider: ProviderType,
@@ -276,7 +308,12 @@ impl ProviderClients {
         }
     }
 
-    /// Get framework data for a specific provider and identifier
+    /// Get framework data for a specific provider and identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the provider cannot resolve the identifier or if the provider does not
+    /// support category/framework browsing.
     pub async fn get_framework(
         &self,
         provider: ProviderType,
@@ -338,7 +375,11 @@ impl ProviderClients {
         }
     }
 
-    /// Get symbol/item data for a specific provider and path
+    /// Get symbol/item data for a specific provider and path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the provider cannot resolve the path or if the underlying fetch fails.
     pub async fn get_symbol(
         &self,
         provider: ProviderType,

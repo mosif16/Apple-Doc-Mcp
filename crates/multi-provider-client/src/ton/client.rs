@@ -118,7 +118,7 @@ impl TonClient {
 
         // Group endpoints by tag
         let mut tag_counts: HashMap<String, usize> = HashMap::new();
-        for (_path, path_item) in &spec.paths {
+        for path_item in spec.paths.values() {
             for (_method, operation) in path_item.operations() {
                 for tag in &operation.tags {
                     *tag_counts.entry(tag.clone()).or_insert(0) += 1;
@@ -299,11 +299,7 @@ impl TonClient {
 
         for (path, path_item) in &spec.paths {
             for (method, operation) in path_item.operations() {
-                let op_id = operation
-                    .operation_id
-                    .as_ref()
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
+                let op_id = operation.operation_id.as_deref().unwrap_or("");
 
                 if op_id == operation_id {
                     return Ok(TonEndpoint::from_openapi(path, method, operation));
@@ -327,19 +323,16 @@ impl TonClient {
                 let matches = path.to_lowercase().contains(&query_lower)
                     || operation
                         .operation_id
-                        .as_ref()
-                        .map(|s| s.to_lowercase().contains(&query_lower))
-                        .unwrap_or(false)
+                        .as_deref()
+                        .is_some_and(|s| s.to_lowercase().contains(&query_lower))
                     || operation
                         .summary
-                        .as_ref()
-                        .map(|s| s.to_lowercase().contains(&query_lower))
-                        .unwrap_or(false)
+                        .as_deref()
+                        .is_some_and(|s| s.to_lowercase().contains(&query_lower))
                     || operation
                         .description
-                        .as_ref()
-                        .map(|s| s.to_lowercase().contains(&query_lower))
-                        .unwrap_or(false);
+                        .as_deref()
+                        .is_some_and(|s| s.to_lowercase().contains(&query_lower));
 
                 if matches {
                     results.push(TonEndpoint::from_openapi(path, method, operation));

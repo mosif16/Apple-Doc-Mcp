@@ -9,7 +9,7 @@ use serde_json::json;
 
 use crate::{
     markdown,
-    services::{design_guidance, knowledge},
+    services::knowledge,
     state::{AppContext, ToolDefinition, ToolHandler, ToolResponse},
     tools::{parse_args, text_response, wrap_handler},
 };
@@ -548,88 +548,6 @@ fn build_pagination_with_provider(query: Option<&str>, provider: &str, current: 
         items.push(format!(
             "• Next: `discover_technologies {{ \"query\": \"{}\", \"provider\": \"{}\", \"page\": {} }}`",
             query, provider, current + 1
-        ));
-    }
-
-    if items.is_empty() {
-        Vec::new()
-    } else {
-        let mut lines = vec!["*Pagination*".to_string()];
-        lines.extend(items);
-        lines
-    }
-}
-
-/// Calculate relevance score for a technology based on popularity and query match
-fn get_relevance_score(title: &str, query: &Option<String>) -> i32 {
-    let title_lower = title.to_lowercase();
-
-    // Base popularity score
-    let mut score = POPULARITY
-        .iter()
-        .find(|(name, _)| title_lower.contains(*name))
-        .map(|(_, s)| *s)
-        .unwrap_or(30); // Default score for unknown frameworks
-
-    // Query match boost with normalization
-    if let Some(q) = query {
-        let q_lower = q.to_lowercase();
-        let title_normalized = normalize_framework_query(title);
-        let query_normalized = normalize_framework_query(q);
-        let title_compact: String = title_lower.chars().filter(|c| !c.is_whitespace()).collect();
-        let query_compact: String = q_lower.chars().filter(|c| !c.is_whitespace()).collect();
-
-        // Exact matches (including normalized variants)
-        if title_lower == q_lower
-            || title_normalized == query_normalized
-            || title_compact == query_compact
-        {
-            score += 50; // Exact match
-        } else if title_lower.starts_with(&q_lower)
-            || title_normalized.starts_with(&query_normalized)
-        {
-            score += 30; // Starts with query
-        } else if title_lower.contains(&q_lower)
-            || title_normalized.contains(&query_normalized)
-            || title_compact.contains(&query_compact)
-        {
-            score += 15; // Contains query
-        }
-    }
-
-    // Design guidance availability boost
-    if design_guidance::has_primer_mapping_by_title(&title_lower) {
-        score += 5;
-    }
-
-    // Recipe availability boost
-    let recipe_count = knowledge::recipes_for(title).len();
-    if recipe_count > 0 {
-        score += recipe_count as i32 * 3;
-    }
-
-    score
-}
-
-fn build_pagination(query: Option<&str>, current: usize, total: usize) -> Vec<String> {
-    if total <= 1 {
-        return vec![];
-    }
-
-    let query = query.unwrap_or("");
-    let mut items = Vec::new();
-    if current > 1 {
-        items.push(format!(
-            "• Previous: `discover_technologies {{ \"query\": \"{}\", \"page\": {} }}`",
-            query,
-            current - 1
-        ));
-    }
-    if current < total {
-        items.push(format!(
-            "• Next: `discover_technologies {{ \"query\": \"{}\", \"page\": {} }}`",
-            query,
-            current + 1
         ));
     }
 

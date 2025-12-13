@@ -1,6 +1,6 @@
 //! Test script for multi-provider clients
 //!
-//! Run with: cargo run --example test_providers
+//! Run with: cargo run --example `test_providers`
 
 use multi_provider_client::{ProviderClients, telegram::TelegramClient, ton::TonClient, cocoon::CocoonClient};
 
