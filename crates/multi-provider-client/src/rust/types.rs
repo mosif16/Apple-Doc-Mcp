@@ -91,6 +91,74 @@ impl RustItemKind {
     }
 }
 
+#[must_use]
+pub fn rustdoc_item_url(crate_name: &str, crate_version: &str, path: &str, kind: RustItemKind) -> String {
+    let path_parts: Vec<&str> = path.split("::").collect();
+    let segments = if path_parts.len() > 1 {
+        &path_parts[1..]
+    } else {
+        &[][..]
+    };
+
+    let is_std = STD_CRATES.iter().any(|(name, _)| *name == crate_name);
+    let base = if is_std {
+        format!("https://doc.rust-lang.org/{crate_name}")
+    } else {
+        format!("https://docs.rs/{crate_name}/{crate_version}/{crate_name}")
+    };
+
+    if segments.is_empty() {
+        return format!("{base}/index.html");
+    }
+
+    if kind == RustItemKind::Module {
+        let module_path = segments.join("/");
+        if module_path.is_empty() {
+            format!("{base}/index.html")
+        } else {
+            format!("{base}/{module_path}/index.html")
+        }
+    } else {
+        let item_name = segments.last().unwrap_or(&"");
+        let module_path = if segments.len() > 1 {
+            segments[..segments.len() - 1].join("/")
+        } else {
+            String::new()
+        };
+
+        let prefix = match kind {
+            RustItemKind::Struct => Some("struct."),
+            RustItemKind::Enum => Some("enum."),
+            RustItemKind::Trait => Some("trait."),
+            RustItemKind::Function => Some("fn."),
+            RustItemKind::Type | RustItemKind::Typedef => Some("type."),
+            RustItemKind::Constant | RustItemKind::AssocConst => Some("constant."),
+            RustItemKind::Static => Some("static."),
+            RustItemKind::Macro => Some("macro."),
+            RustItemKind::Derive => Some("derive."),
+            RustItemKind::Primitive => Some("primitive."),
+            RustItemKind::Union => Some("union."),
+            RustItemKind::TraitAlias => Some("traitalias."),
+            RustItemKind::Module
+            | RustItemKind::Method
+            | RustItemKind::ExternCrate
+            | RustItemKind::Import
+            | RustItemKind::AssocType => None,
+        };
+
+        let file_name = match prefix {
+            Some(prefix) => format!("{prefix}{item_name}.html"),
+            None => "index.html".to_string(),
+        };
+
+        if module_path.is_empty() {
+            format!("{base}/{file_name}")
+        } else {
+            format!("{base}/{module_path}/{file_name}")
+        }
+    }
+}
+
 impl std::fmt::Display for RustItemKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_str())
@@ -266,20 +334,7 @@ impl RustItem {
             format!("{}::{}::{}", crate_name, entry.path, entry.name)
         };
 
-        let url = if crate_name == "std" || crate_name == "core" || crate_name == "alloc" {
-            format!(
-                "https://doc.rust-lang.org/{}/{}.html",
-                crate_name,
-                full_path.replace("::", "/")
-            )
-        } else {
-            format!(
-                "https://docs.rs/{}/{}/{}.html",
-                crate_name,
-                crate_version,
-                full_path.replace("::", "/")
-            )
-        };
+        let url = rustdoc_item_url(crate_name, crate_version, &full_path, entry.kind);
 
         Self {
             name: entry.name.clone(),
@@ -346,3 +401,32 @@ pub const STD_CRATES: &[(&str, &str)] = &[
     ("core", "The Rust Core Library - dependency-free foundational types"),
     ("alloc", "The Rust Allocation Library - heap allocation abstractions"),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rustdoc_item_url_docs_rs_function_in_module() {
+        let url = rustdoc_item_url("tokio", "1.47.2", "tokio::task::spawn", RustItemKind::Function);
+        assert_eq!(url, "https://docs.rs/tokio/1.47.2/tokio/task/fn.spawn.html");
+    }
+
+    #[test]
+    fn test_rustdoc_item_url_docs_rs_module() {
+        let url = rustdoc_item_url("tokio", "1.47.2", "tokio::task", RustItemKind::Module);
+        assert_eq!(url, "https://docs.rs/tokio/1.47.2/tokio/task/index.html");
+    }
+
+    #[test]
+    fn test_rustdoc_item_url_std_function() {
+        let url = rustdoc_item_url("std", "latest", "std::thread::spawn", RustItemKind::Function);
+        assert_eq!(url, "https://doc.rust-lang.org/std/thread/fn.spawn.html");
+    }
+
+    #[test]
+    fn test_rustdoc_item_url_derive_macro() {
+        let url = rustdoc_item_url("serde", "1.0.197", "serde::Serialize", RustItemKind::Derive);
+        assert_eq!(url, "https://docs.rs/serde/1.0.197/serde/derive.Serialize.html");
+    }
+}

@@ -20,6 +20,7 @@ use docs_mcp_client::cache::{DiskCache, MemoryCache};
 const STD_SEARCH_INDEX_URL: &str = "https://doc.rust-lang.org/search-index.js";
 const DOCS_RS_RELEASES_SEARCH: &str = "https://docs.rs/releases/search";
 const DOCS_RS_CRATE_DATA: &str = "https://docs.rs/crate";
+const INDEX_CACHE_VERSION: u32 = 2;
 
 #[derive(Debug)]
 pub struct RustClient {
@@ -220,7 +221,7 @@ impl RustClient {
                     description: item.desc.clone(),
                     kind: item.kind,
                     path: full_path.clone(),
-                    url: self.build_item_url(crate_name, &crate_info.version, &full_path),
+                    url: self.build_item_url(crate_name, &crate_info.version, &full_path, item.kind),
                 }
             })
             .collect();
@@ -271,7 +272,7 @@ impl RustClient {
                 format!("{}::{}::{}", crate_name, entry.path, entry.name)
             };
 
-            let url = self.build_item_url(crate_name, &crate_info.version, &full_path);
+            let url = self.build_item_url(crate_name, &crate_info.version, &full_path, entry.kind);
             return self.fetch_item_with_details(
                 &entry.name,
                 &full_path,
@@ -370,6 +371,8 @@ impl RustClient {
             (format!("{}/{}fn.{}.html", base, module_prefix, item_name), RustItemKind::Function),
             (format!("{}/{}type.{}.html", base, module_prefix, item_name), RustItemKind::Type),
             (format!("{}/{}macro.{}.html", base, module_prefix, item_name), RustItemKind::Macro),
+            (format!("{}/{}attr.{}.html", base, module_prefix, item_name), RustItemKind::Macro),
+            (format!("{}/{}derive.{}.html", base, module_prefix, item_name), RustItemKind::Derive),
             (format!("{}/{}constant.{}.html", base, module_prefix, item_name), RustItemKind::Constant),
             (format!("{}/{}static.{}.html", base, module_prefix, item_name), RustItemKind::Static),
             (format!("{}/{}{}/index.html", base, module_prefix, item_name), RustItemKind::Module),
@@ -406,16 +409,32 @@ impl RustClient {
             is_detailed: false,
         };
 
-        // Fetch detailed documentation via HTML parsing
-        if let Ok(detailed) = self.fetch_detailed_documentation(url, kind).await {
-            item.declaration = detailed.declaration;
-            item.documentation = detailed.documentation;
-            item.examples = detailed.examples;
-            item.methods = detailed.methods;
-            item.impl_traits = detailed.impl_traits;
-            item.associated_types = detailed.associated_types;
-            item.source_url = detailed.source_url;
-            item.is_detailed = true;
+        let mut candidate_urls = vec![url.to_string()];
+        if kind == RustItemKind::Macro && url.contains("macro.") {
+            let alt = url.replace("macro.", "attr.");
+            if alt != url {
+                candidate_urls.push(alt);
+            }
+        }
+
+        for candidate_url in candidate_urls {
+            match self.fetch_detailed_documentation(&candidate_url, kind).await {
+                Ok(detailed) => {
+                    item.url = candidate_url;
+                    item.declaration = detailed.declaration;
+                    item.documentation = detailed.documentation;
+                    item.examples = detailed.examples;
+                    item.methods = detailed.methods;
+                    item.impl_traits = detailed.impl_traits;
+                    item.associated_types = detailed.associated_types;
+                    item.source_url = detailed.source_url;
+                    item.is_detailed = true;
+                    break;
+                }
+                Err(error) => {
+                    debug!(url = %candidate_url, %error, "Failed to fetch detailed documentation");
+                }
+            }
         }
 
         Ok(item)
@@ -465,7 +484,7 @@ impl RustClient {
             summary: entry.desc.clone(),
             crate_name: crate_name.to_string(),
             crate_version: crate_info.version.clone(),
-            url: self.build_item_url(crate_name, &crate_info.version, &full_path),
+            url: self.build_item_url(crate_name, &crate_info.version, &full_path, entry.kind),
             declaration: None,
             documentation: None,
             examples: Vec::new(),
@@ -654,7 +673,7 @@ impl RustClient {
         }
 
         // Check disk cache
-        let cache_key = format!("index_{}.json", crate_name);
+        let cache_key = format!("index_v{}_{}.json", INDEX_CACHE_VERSION, crate_name);
         if let Ok(Some(entry)) = self.disk_cache.load::<RustSearchIndex>(&cache_key).await {
             let index = entry.value;
             if is_std {
@@ -859,6 +878,15 @@ impl RustClient {
         // First get the crate version
         let crate_info = self.get_crate(crate_name).await?;
 
+        match self
+            .scrape_crate_all_items(crate_name, &crate_info.version)
+            .await
+        {
+            Ok(index) if !index.items.is_empty() => return Ok(index),
+            Ok(_) => debug!("all.html returned no items, falling back to other strategies"),
+            Err(error) => debug!(%error, "Failed to scrape all.html, falling back"),
+        }
+
         // Try to fetch search-index.js from docs.rs
         let url = format!(
             "https://docs.rs/{}/{}/search-index.js",
@@ -872,7 +900,9 @@ impl RustClient {
         match response {
             Ok(resp) if resp.status().is_success() => {
                 let text = resp.text().await?;
-                parse_search_index_js(&text, crate_name)
+                let mut index = parse_search_index_js(&text, crate_name)?;
+                index.crate_version = crate_info.version;
+                Ok(index)
             }
             _ => {
                 // Fall back to scraping the crate's main documentation page
@@ -949,6 +979,73 @@ impl RustClient {
         })
     }
 
+    /// Scrape the crate's `all.html` page (all items) to build a richer search index.
+    async fn scrape_crate_all_items(&self, crate_name: &str, version: &str) -> Result<RustSearchIndex> {
+        use scraper::{Html, Selector};
+
+        let url = format!("https://docs.rs/{}/{}/{}/all.html", crate_name, version, crate_name);
+        debug!(url = %url, "Scraping crate all.html for search index");
+
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch crate all.html")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to fetch crate all.html: {}", response.status());
+        }
+
+        let html = response.text().await?;
+        let document = Html::parse_document(&html);
+
+        let link_selector = Selector::parse("ul.all-items li a")
+            .map_err(|error| anyhow::anyhow!("Failed to parse all.html selector: {error}"))?;
+
+        let mut items = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        for link in document.select(&link_selector) {
+            let text = link.text().collect::<String>();
+            let text = text.trim();
+            if text.is_empty() {
+                continue;
+            }
+
+            let href = link.value().attr("href").unwrap_or_default();
+            let kind = rust_item_kind_from_href(href);
+
+            let (mut path, name) = split_rust_path(text);
+            if name.is_empty() {
+                continue;
+            }
+
+            if path.is_empty() && href.contains('/') {
+                path = rust_path_from_href(href, kind);
+            }
+
+            let key = format!("{:?}::{}::{}", kind, path, name);
+            if !seen.insert(key) {
+                continue;
+            }
+
+            items.push(RustSearchIndexEntry {
+                name,
+                path,
+                kind,
+                desc: String::new(),
+                parent: None,
+            });
+        }
+
+        Ok(RustSearchIndex {
+            crate_name: crate_name.to_string(),
+            crate_version: version.to_string(),
+            items,
+        })
+    }
+
     /// Parse a module item element into a search index entry
     fn parse_module_item(&self, element: &scraper::ElementRef, _crate_name: &str) -> Option<RustSearchIndexEntry> {
         use scraper::Selector;
@@ -998,9 +1095,16 @@ impl RustClient {
             String::new()
         };
 
+        let href = link.value().attr("href").unwrap_or("");
+        let item_kind = if item_kind == RustItemKind::Module {
+            rust_item_kind_from_href(href)
+        } else {
+            item_kind
+        };
+
         Some(RustSearchIndexEntry {
             name,
-            path: String::new(), // Root level items have empty path
+            path: rust_path_from_href(href, item_kind),
             kind: item_kind,
             desc,
             parent: None,
@@ -1031,25 +1135,18 @@ impl RustClient {
             c if c.contains("fn") => RustItemKind::Function,
             c if c.contains("type") => RustItemKind::Type,
             c if c.contains("macro") => RustItemKind::Macro,
+            c if c.contains("derive") => RustItemKind::Derive,
             c if c.contains("constant") => RustItemKind::Constant,
             c if c.contains("static") => RustItemKind::Static,
             c if c.contains("attr") => RustItemKind::Macro, // Attribute macros
             _ => {
                 // Fallback: try to infer from href
                 let href = link.value().attr("href").unwrap_or("");
-                if href.contains("struct.") {
-                    RustItemKind::Struct
-                } else if href.contains("enum.") {
-                    RustItemKind::Enum
-                } else if href.contains("trait.") {
-                    RustItemKind::Trait
-                } else if href.contains("fn.") {
-                    RustItemKind::Function
-                } else {
-                    RustItemKind::Module
-                }
+                rust_item_kind_from_href(href)
             }
         };
+
+        let href = link.value().attr("href").unwrap_or("");
 
         // Get description from the next <dd> sibling
         let desc = dt_element
@@ -1061,7 +1158,7 @@ impl RustClient {
 
         Some(RustSearchIndexEntry {
             name,
-            path: String::new(),
+            path: rust_path_from_href(href, kind),
             kind,
             desc,
             parent: None,
@@ -1089,13 +1186,17 @@ impl RustClient {
             RustItemKind::Trait
         } else if href.contains("fn.") {
             RustItemKind::Function
+        } else if href.contains("derive.") {
+            RustItemKind::Derive
+        } else if href.contains("macro.") || href.contains("attr.") {
+            RustItemKind::Macro
         } else {
             RustItemKind::Module
         };
 
         Some(RustSearchIndexEntry {
             name,
-            path: String::new(),
+            path: rust_path_from_href(href, kind),
             kind,
             desc: String::new(),
             parent: None,
@@ -1103,24 +1204,114 @@ impl RustClient {
     }
 
     /// Build the documentation URL for an item
-    fn build_item_url(&self, crate_name: &str, version: &str, path: &str) -> String {
-        let path_parts: Vec<&str> = path.split("::").collect();
-        let html_path = if path_parts.len() > 1 {
-            path_parts[1..].join("/")
-        } else {
-            String::new()
-        };
-
-        if STD_CRATES.iter().any(|(n, _)| *n == crate_name) {
-            format!("https://doc.rust-lang.org/{}/{}.html", crate_name, html_path)
-        } else {
-            format!("https://docs.rs/{}/{}/{}.html", crate_name, version, html_path)
-        }
+    fn build_item_url(&self, crate_name: &str, version: &str, path: &str, kind: RustItemKind) -> String {
+        super::types::rustdoc_item_url(crate_name, version, path, kind)
     }
 
     pub fn cache_dir(&self) -> &PathBuf {
         &self.cache_dir
     }
+}
+
+fn split_rust_path(path: &str) -> (String, String) {
+    let parts: Vec<&str> = path.split("::").collect();
+    if parts.is_empty() {
+        return (String::new(), String::new());
+    }
+
+    if parts.len() == 1 {
+        return (String::new(), parts[0].to_string());
+    }
+
+    let parent = parts[..parts.len() - 1].join("::");
+    let name = parts[parts.len() - 1].to_string();
+    (parent, name)
+}
+
+fn rust_item_kind_from_href(href: &str) -> RustItemKind {
+    let cleaned = href
+        .split(['#', '?'])
+        .next()
+        .unwrap_or(href)
+        .trim();
+
+    let mut cleaned = cleaned;
+    while let Some(rest) = cleaned.strip_prefix("../") {
+        cleaned = rest;
+    }
+    while let Some(rest) = cleaned.strip_prefix("./") {
+        cleaned = rest;
+    }
+
+    let cleaned = cleaned.to_lowercase();
+
+    if cleaned.contains("struct.") {
+        RustItemKind::Struct
+    } else if cleaned.contains("enum.") {
+        RustItemKind::Enum
+    } else if cleaned.contains("trait.") {
+        RustItemKind::Trait
+    } else if cleaned.contains("fn.") {
+        RustItemKind::Function
+    } else if cleaned.contains("type.") {
+        RustItemKind::Type
+    } else if cleaned.contains("constant.") {
+        RustItemKind::Constant
+    } else if cleaned.contains("static.") {
+        RustItemKind::Static
+    } else if cleaned.contains("derive.") {
+        RustItemKind::Derive
+    } else if cleaned.contains("macro.") || cleaned.contains("attr.") {
+        RustItemKind::Macro
+    } else if cleaned.contains("primitive.") {
+        RustItemKind::Primitive
+    } else if cleaned.contains("union.") {
+        RustItemKind::Union
+    } else if cleaned.contains("traitalias.") {
+        RustItemKind::TraitAlias
+    } else {
+        RustItemKind::Module
+    }
+}
+
+fn rust_path_from_href(href: &str, kind: RustItemKind) -> String {
+    let cleaned = href
+        .split(['#', '?'])
+        .next()
+        .unwrap_or(href)
+        .trim();
+
+    if cleaned.is_empty() || cleaned.starts_with("http://") || cleaned.starts_with("https://") {
+        return String::new();
+    }
+
+    let mut cleaned = cleaned;
+    while let Some(rest) = cleaned.strip_prefix("../") {
+        cleaned = rest;
+    }
+    while let Some(rest) = cleaned.strip_prefix("./") {
+        cleaned = rest;
+    }
+
+    let mut parts: Vec<&str> = if cleaned.ends_with('/') {
+        cleaned
+            .trim_end_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect()
+    } else {
+        let mut parts: Vec<&str> = cleaned.split('/').filter(|s| !s.is_empty()).collect();
+        if !parts.is_empty() {
+            parts.pop();
+        }
+        parts
+    };
+
+    if kind == RustItemKind::Module && !parts.is_empty() {
+        parts.pop();
+    }
+
+    parts.join("::")
 }
 
 /// Convert docs.rs releases to RustCrate structs
@@ -1258,5 +1449,60 @@ mod tests {
         assert_eq!(RustItemKind::from_type_id(5), Some(RustItemKind::Function));
         assert_eq!(RustItemKind::from_type_id(8), Some(RustItemKind::Trait));
         assert_eq!(RustItemKind::from_type_id(255), None);
+    }
+
+    #[test]
+    fn test_split_rust_path() {
+        assert_eq!(split_rust_path("spawn"), (String::new(), "spawn".to_string()));
+        assert_eq!(
+            split_rust_path("task::spawn"),
+            ("task".to_string(), "spawn".to_string())
+        );
+        assert_eq!(
+            split_rust_path("tokio::task::spawn"),
+            ("tokio::task".to_string(), "spawn".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rust_item_kind_from_href() {
+        assert_eq!(
+            rust_item_kind_from_href("task/fn.spawn.html"),
+            RustItemKind::Function
+        );
+        assert_eq!(
+            rust_item_kind_from_href("fs/struct.File.html"),
+            RustItemKind::Struct
+        );
+        assert_eq!(
+            rust_item_kind_from_href("attr.main.html"),
+            RustItemKind::Macro
+        );
+        assert_eq!(
+            rust_item_kind_from_href("derive.Serialize.html"),
+            RustItemKind::Derive
+        );
+        assert_eq!(
+            rust_item_kind_from_href("fs/index.html"),
+            RustItemKind::Module
+        );
+    }
+
+    #[test]
+    fn test_rust_path_from_href() {
+        assert_eq!(
+            rust_path_from_href("task/fn.spawn.html", RustItemKind::Function),
+            "task"
+        );
+        assert_eq!(
+            rust_path_from_href("fs/struct.File.html", RustItemKind::Struct),
+            "fs"
+        );
+        assert_eq!(rust_path_from_href("task/index.html", RustItemKind::Module), "");
+        assert_eq!(
+            rust_path_from_href("task/join/index.html", RustItemKind::Module),
+            "task"
+        );
+        assert_eq!(rust_path_from_href("attr.main.html", RustItemKind::Macro), "");
     }
 }

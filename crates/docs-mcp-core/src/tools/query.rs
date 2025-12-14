@@ -1474,29 +1474,58 @@ async fn search_rust(
         }
     };
 
-    let results = items
+    let mut results: Vec<DocResult> = items
         .into_iter()
         .take(max_results)
-        .map(|item| {
-            let full_content = if !item.summary.is_empty() {
-                Some(item.summary.clone())
-            } else {
-                None
-            };
-            DocResult {
-                title: item.name,
-                kind: format!("{:?}", item.kind),
-                path: item.path.clone(),
-                summary: item.summary,
-                platforms: Some(format!("{} v{}", item.crate_name, item.crate_version)),
-                code_sample: item.examples.first().map(|e| e.code.clone()),
-                related_apis: item.methods.iter().take(8).map(|m| m.name.clone()).collect(),
-                full_content,
-                declaration: Some(item.path),
-                parameters: Vec::new(),
-            }
+        .map(|item| DocResult {
+            title: item.name,
+            kind: format!("{:?}", item.kind),
+            path: item.path.clone(),
+            summary: item.summary,
+            platforms: Some(format!("{} v{}", item.crate_name, item.crate_version)),
+            code_sample: None,
+            related_apis: Vec::new(),
+            full_content: None,
+            declaration: None,
+            parameters: Vec::new(),
         })
         .collect();
+
+    for result in results.iter_mut().take(MAX_DETAILED_DOCS) {
+        let Ok(item) = context.providers.rust.get_item(&result.path).await else {
+            continue;
+        };
+
+        result.full_content = item
+            .documentation
+            .as_deref()
+            .map(|text| trim_text(text, MAX_CONTENT_LENGTH))
+            .or_else(|| {
+                if item.summary.is_empty() {
+                    None
+                } else {
+                    Some(item.summary.clone())
+                }
+            });
+
+        result.declaration = item
+            .declaration
+            .clone()
+            .or_else(|| Some(item.path.clone()));
+
+        result.code_sample = item
+            .examples
+            .iter()
+            .max_by_key(|ex| ex.code.len())
+            .map(|ex| ex.code.clone());
+
+        result.related_apis = item
+            .methods
+            .iter()
+            .take(8)
+            .map(|method| method.name.clone())
+            .collect();
+    }
 
     Ok(results)
 }
@@ -1562,10 +1591,11 @@ async fn search_ton(
         .into_iter()
         .take(max_results)
         .map(|item| {
-            // Format code examples if any
-            let code_sample = item.code_examples.first().map(|ex| {
-                format!("```{}\n{}\n```", ex.language, ex.code)
-            });
+            let code_sample = item
+                .code_examples
+                .iter()
+                .max_by_key(|ex| (ex.is_complete as usize, ex.code.len()))
+                .map(|ex| ex.code.clone());
 
             // Determine the kind based on result type
             let kind = item.result_type.name().to_string();
@@ -1673,26 +1703,39 @@ async fn search_mdn(
     let mut results = Vec::new();
     for item in items.into_iter().take(max_results) {
         // Fetch full article for top results
-        let (full_content, code_sample, parameters) = if results.len() < MAX_DETAILED_DOCS {
+        let (full_content, code_sample, declaration, parameters) = if results.len() < MAX_DETAILED_DOCS {
             match context.providers.mdn.get_article(&item.slug).await {
                 Ok(article) => {
-                    let code = article.examples.first().map(|e| e.code.clone());
+                    let code = article
+                        .examples
+                        .iter()
+                        .max_by_key(|ex| (ex.is_runnable as usize, ex.code.len()))
+                        .map(|ex| ex.code.clone());
                     let params: Vec<(String, String)> = article
                         .parameters
                         .iter()
                         .map(|p| (p.name.clone(), p.description.clone()))
                         .collect();
-                    let content = if !article.summary.is_empty() {
-                        Some(article.summary.clone())
-                    } else {
-                        None
-                    };
-                    (content, code, params)
+                    let content = article
+                        .content
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|text| !text.is_empty())
+                        .map(|text| trim_text(text, MAX_CONTENT_LENGTH))
+                        .or_else(|| {
+                            if article.summary.is_empty() {
+                                None
+                            } else {
+                                Some(article.summary.clone())
+                            }
+                        });
+                    let decl = article.syntax.filter(|text| !text.trim().is_empty());
+                    (content, code, decl, params)
                 }
-                Err(_) => (None, None, Vec::new()),
+                Err(_) => (None, None, None, Vec::new()),
             }
         } else {
-            (None, None, Vec::new())
+            (None, None, None, Vec::new())
         };
 
         results.push(DocResult {
@@ -1700,11 +1743,11 @@ async fn search_mdn(
             kind: "Article".to_string(),
             path: item.slug.clone(),
             summary: item.summary.clone(),
-            platforms: Some("MDN Web Docs".to_string()),
+            platforms: Some(format!("MDN Web Docs ({})", item.category)),
             code_sample,
             related_apis: Vec::new(),
             full_content,
-            declaration: None,
+            declaration,
             parameters,
         });
     }
@@ -2467,7 +2510,11 @@ fn build_response(
         lines.push(markdown::header(2, "Documentation"));
 
         for (i, result) in results.iter().enumerate() {
-            let is_detailed = i < MAX_DETAILED_DOCS && result.full_content.is_some();
+            let is_detailed = i < MAX_DETAILED_DOCS
+                && (result.full_content.is_some()
+                    || result.declaration.is_some()
+                    || result.code_sample.is_some()
+                    || !result.parameters.is_empty());
 
             lines.push(String::new());
             lines.push(format!("### {}. {} `{}`", i + 1, result.title, result.kind));

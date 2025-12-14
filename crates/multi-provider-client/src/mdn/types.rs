@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// MDN documentation category
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -207,6 +208,7 @@ pub enum MdnSectionValue {
     Prose { content: String },
     Code { code: String, language: Option<String> },
     Text(String),
+    Other(Value),
 }
 
 #[cfg(test)]

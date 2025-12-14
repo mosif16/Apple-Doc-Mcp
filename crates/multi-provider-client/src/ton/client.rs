@@ -19,6 +19,17 @@ const OPENAPI_URL: &str =
     "https://raw.githubusercontent.com/tonkeeper/opentonapi/master/api/openapi.yml";
 const CACHE_KEY: &str = "ton_openapi_spec";
 
+fn tokenize_query(query: &str) -> Vec<String> {
+    let mut terms: Vec<String> = query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|term| term.len() > 1)
+        .map(|term| term.to_lowercase())
+        .collect();
+    terms.sort();
+    terms.dedup();
+    terms
+}
+
 #[derive(Debug)]
 pub struct TonClient {
     http: Client,
@@ -315,26 +326,45 @@ impl TonClient {
     pub async fn search(&self, query: &str) -> Result<Vec<TonEndpoint>> {
         let spec = self.get_spec().await?;
         let query_lower = query.to_lowercase();
+        let terms = tokenize_query(&query_lower);
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
 
         let mut results: Vec<TonEndpoint> = Vec::new();
 
         for (path, path_item) in &spec.paths {
             for (method, operation) in path_item.operations() {
-                let matches = path.to_lowercase().contains(&query_lower)
-                    || operation
-                        .operation_id
-                        .as_deref()
-                        .is_some_and(|s| s.to_lowercase().contains(&query_lower))
-                    || operation
-                        .summary
-                        .as_deref()
-                        .is_some_and(|s| s.to_lowercase().contains(&query_lower))
-                    || operation
-                        .description
-                        .as_deref()
-                        .is_some_and(|s| s.to_lowercase().contains(&query_lower));
+                let path_lower = path.to_lowercase();
+                let operation_id_lower = operation
+                    .operation_id
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_lowercase();
+                let summary_lower = operation
+                    .summary
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_lowercase();
+                let description_lower = operation
+                    .description
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_lowercase();
 
-                if matches {
+                let matches_phrase = path_lower.contains(&query_lower)
+                    || operation_id_lower.contains(&query_lower)
+                    || summary_lower.contains(&query_lower)
+                    || description_lower.contains(&query_lower);
+
+                let matches_terms = terms.iter().any(|term| {
+                    path_lower.contains(term)
+                        || operation_id_lower.contains(term)
+                        || summary_lower.contains(term)
+                        || description_lower.contains(term)
+                });
+
+                if matches_phrase || matches_terms {
                     results.push(TonEndpoint::from_openapi(path, method, operation));
                 }
             }
@@ -347,12 +377,13 @@ impl TonClient {
     #[instrument(name = "ton_client.search_all", skip(self))]
     pub async fn search_all(&self, query: &str) -> Result<Vec<TonSearchResult>> {
         let query_lower = query.to_lowercase();
+        let terms = tokenize_query(&query_lower);
         let mut results: Vec<TonSearchResult> = Vec::new();
 
         // Search API endpoints
         let api_results = self.search(&query_lower).await?;
         for endpoint in api_results {
-            let score = self.calculate_api_score(&endpoint, &query_lower);
+            let score = self.calculate_api_score(&endpoint, &query_lower, &terms);
             results.push(TonSearchResult {
                 id: endpoint.operation_id.clone(),
                 title: endpoint
@@ -386,33 +417,71 @@ impl TonClient {
     }
 
     /// Calculate relevance score for API endpoint
-    fn calculate_api_score(&self, endpoint: &TonEndpoint, query: &str) -> f32 {
+    fn calculate_api_score(&self, endpoint: &TonEndpoint, query: &str, terms: &[String]) -> f32 {
+        let query = query.trim();
         let mut score = 0.0;
 
+        let operation_id_lower = endpoint.operation_id.to_lowercase();
+        let path_lower = endpoint.path.to_lowercase();
+        let summary_lower = endpoint.summary.as_deref().unwrap_or_default().to_lowercase();
+        let description_lower = endpoint
+            .description
+            .as_deref()
+            .unwrap_or_default()
+            .to_lowercase();
+
         // Exact match in operation_id
-        if endpoint.operation_id.to_lowercase() == query {
+        if operation_id_lower == query {
             score += 10.0;
-        } else if endpoint.operation_id.to_lowercase().contains(query) {
+        } else if operation_id_lower.contains(query) {
             score += 5.0;
         }
 
         // Match in path
-        if endpoint.path.to_lowercase().contains(query) {
+        if path_lower.contains(query) {
             score += 3.0;
         }
 
         // Match in summary
-        if let Some(ref summary) = endpoint.summary {
-            if summary.to_lowercase().contains(query) {
-                score += 2.0;
-            }
+        if summary_lower.contains(query) {
+            score += 2.0;
         }
 
         // Match in description
-        if let Some(ref desc) = endpoint.description {
-            if desc.to_lowercase().contains(query) {
-                score += 1.0;
+        if description_lower.contains(query) {
+            score += 1.0;
+        }
+
+        let mut matched_terms = 0u8;
+        for term in terms {
+            let mut matched = false;
+            if operation_id_lower.contains(term) {
+                score += 2.5;
+                matched = true;
             }
+            if path_lower.contains(term) {
+                score += 1.5;
+                matched = true;
+            }
+            if summary_lower.contains(term) {
+                score += 1.0;
+                matched = true;
+            }
+            if description_lower.contains(term) {
+                score += 0.5;
+                matched = true;
+            }
+            if matched {
+                matched_terms = matched_terms.saturating_add(1);
+            }
+        }
+
+        let matched_terms_usize = usize::from(matched_terms);
+
+        if matched_terms_usize == terms.len() && matched_terms > 1 {
+            score += 1.5;
+        } else if matched_terms > 1 {
+            score += f32::from(matched_terms) * 0.5;
         }
 
         score
@@ -420,25 +489,71 @@ impl TonClient {
 
     /// Search security patterns
     fn search_security_patterns(&self, query: &str) -> Vec<TonSearchResult> {
+        let terms = tokenize_query(query);
         let patterns = self.get_security_patterns();
         let mut results = Vec::new();
 
+        if terms.is_empty() {
+            return results;
+        }
+
         for pattern in patterns {
+            let title_lower = pattern.title.to_lowercase();
+            let category_lower = pattern.category.name().to_lowercase();
+            let description_lower = pattern.description.to_lowercase();
+            let vulnerable_code_lower = pattern
+                .vulnerable_pattern
+                .as_ref()
+                .map(|ex| ex.code.to_lowercase());
+            let secure_code_lower = pattern
+                .secure_pattern
+                .as_ref()
+                .map(|ex| ex.code.to_lowercase());
+
             let mut score = 0.0;
+            let mut matched_terms = 0u8;
 
-            // Title match
-            if pattern.title.to_lowercase().contains(query) {
-                score += 5.0;
+            for term in &terms {
+                let mut matched = false;
+
+                // Title match (highest weight)
+                if title_lower.contains(term) {
+                    score += 4.0;
+                    matched = true;
+                }
+
+                // Category match
+                if category_lower.contains(term) {
+                    score += 2.0;
+                    matched = true;
+                }
+
+                // Description match
+                if description_lower.contains(term) {
+                    score += 1.5;
+                    matched = true;
+                }
+
+                // Code example match
+                if vulnerable_code_lower
+                    .as_deref()
+                    .is_some_and(|code| code.contains(term))
+                    || secure_code_lower
+                        .as_deref()
+                        .is_some_and(|code| code.contains(term))
+                {
+                    score += 1.0;
+                    matched = true;
+                }
+
+                if matched {
+                    matched_terms = matched_terms.saturating_add(1);
+                }
             }
 
-            // Category match
-            if pattern.category.name().to_lowercase().contains(query) {
+            // Phrase match bonus
+            if title_lower.contains(query) {
                 score += 3.0;
-            }
-
-            // Description match
-            if pattern.description.to_lowercase().contains(query) {
-                score += 2.0;
             }
 
             // Keyword matches
@@ -456,6 +571,14 @@ impl TonClient {
                 if query.contains(keyword) {
                     score += 1.0;
                 }
+            }
+
+            let matched_terms_usize = usize::from(matched_terms);
+
+            if matched_terms_usize == terms.len() && matched_terms > 1 {
+                score += 1.5;
+            } else if matched_terms > 1 {
+                score += f32::from(matched_terms) * 0.5;
             }
 
             if score > 0.0 {
@@ -488,32 +611,96 @@ impl TonClient {
 
     /// Search embedded documentation articles
     fn search_documentation(&self, query: &str) -> Vec<TonSearchResult> {
+        let terms = tokenize_query(query);
         let articles = self.get_documentation_articles();
         let mut results = Vec::new();
 
+        if terms.is_empty() {
+            return results;
+        }
+
         for article in articles {
+            let title_lower = article.title.to_lowercase();
+            let category_lower = article.category.to_lowercase();
+            let description_lower = article.description.to_lowercase();
+            let content_lower = article.content.to_lowercase();
+            let tags_lower: Vec<String> = article.tags.iter().map(|tag| tag.to_lowercase()).collect();
+            let code_fields_lower: Vec<String> = article
+                .code_examples
+                .iter()
+                .map(|ex| {
+                    let mut text = String::new();
+                    text.push_str(&ex.language);
+                    text.push(' ');
+                    if let Some(desc) = &ex.description {
+                        text.push_str(desc);
+                        text.push(' ');
+                    }
+                    text.push_str(&ex.code);
+                    text.to_lowercase()
+                })
+                .collect();
+
             let mut score = 0.0;
+            let mut matched_terms = 0u8;
 
-            // Title match (highest weight)
-            if article.title.to_lowercase().contains(query) {
-                score += 5.0;
-            }
+            for term in &terms {
+                let mut matched = false;
 
-            // Tag match
-            for tag in &article.tags {
-                if tag.to_lowercase().contains(query) {
+                // Title match (highest weight)
+                if title_lower.contains(term) {
+                    score += 4.0;
+                    matched = true;
+                }
+
+                // Category match
+                if category_lower.contains(term) {
+                    score += 2.5;
+                    matched = true;
+                }
+
+                // Tag match
+                if tags_lower.iter().any(|tag| tag.contains(term)) {
                     score += 3.0;
+                    matched = true;
+                }
+
+                // Description match
+                if description_lower.contains(term) {
+                    score += 1.5;
+                    matched = true;
+                }
+
+                // Content match
+                if content_lower.contains(term) {
+                    score += 0.75;
+                    matched = true;
+                }
+
+                // Code examples match
+                if code_fields_lower.iter().any(|field| field.contains(term)) {
+                    score += 1.0;
+                    matched = true;
+                }
+
+                if matched {
+                    matched_terms = matched_terms.saturating_add(1);
                 }
             }
 
-            // Description match
-            if article.description.to_lowercase().contains(query) {
+            // Phrase match bonus
+            if title_lower.contains(query) {
                 score += 2.0;
+            } else if description_lower.contains(query) || content_lower.contains(query) {
+                score += 1.0;
             }
 
-            // Content match
-            if article.content.to_lowercase().contains(query) {
-                score += 1.0;
+            let matched_terms_usize = usize::from(matched_terms);
+
+            if matched_terms_usize == terms.len() && matched_terms > 1 {
+                score += 1.5;
+            } else if matched_terms > 1 {
+                score += f32::from(matched_terms) * 0.5;
             }
 
             if score > 0.0 {

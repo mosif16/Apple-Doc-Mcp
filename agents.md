@@ -1,5 +1,10 @@
 ⚠️ MANDATORY: Every agent who touches this repository must review and update this document before finishing their session. Keeping it current is a strict requirement—do not skip this step.
 
+2025-12-14 (Codex agent):
+- Rust provider: fixed docs.rs indexing by scraping `{crate}/all.html`, inferring module paths from hrefs (incl re-exports), and bumping the on-disk index cache version.
+- Rust provider: corrected rustdoc URL generation (fn/struct/module/derive) and added macro fallback to `attr.*` pages so attribute macros like `tokio::main` fetch full docs.
+- Added non-network unit tests for MDN `document_to_article` parsing and Rust URL/href parsing; verified `cargo test --all` and `cargo clippy --all-targets -- -D warnings` pass.
+
 2025-12-13 (Codex agent):
 - Added an automated feedback loop: MCP `submit_feedback` tool writes structured JSON into `Feedback/`, and the server prompts for feedback via initialization instructions + a `notifications/message` nudge after `notifications/initialized`.
 - Added `Feedback/README.md` with best practices for feedback ingestion and triage; `Feedback/.gitignore` keeps artifacts out of git.

@@ -1,9 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration as StdDuration;
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use tokio::sync::RwLock;
@@ -18,6 +20,10 @@ use docs_mcp_client::cache::{DiskCache, MemoryCache};
 const MDN_SEARCH_API: &str = "https://developer.mozilla.org/api/v1/search";
 const MDN_DOCUMENT_API: &str = "https://developer.mozilla.org";
 const MDN_BASE_URL: &str = "https://developer.mozilla.org/en-US/docs";
+const ARTICLE_CACHE_VERSION: u32 = 2;
+
+static PRE_BLOCK_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?is)<pre[^>]*>.*?</pre>").expect("pre block regex"));
 
 #[derive(Debug)]
 pub struct MdnClient {
@@ -132,7 +138,7 @@ impl MdnClient {
     /// Get a specific MDN article by slug
     #[instrument(name = "mdn_client.get_article", skip(self))]
     pub async fn get_article(&self, slug: &str) -> Result<MdnArticle> {
-        let cache_key = format!("article_{}", slug.replace('/', "_"));
+        let cache_key = format!("article_v{ARTICLE_CACHE_VERSION}_{}", slug.replace('/', "_"));
 
         // Check disk cache
         if let Ok(Some(entry)) = self.disk_cache.load::<MdnArticle>(&cache_key).await {
@@ -383,6 +389,8 @@ impl MdnClient {
         let mut examples = Vec::new();
         let mut syntax = None;
         let mut content_parts = Vec::new();
+        let mut example_dedupe = HashSet::<String>::new();
+        let pre_selector = Selector::parse("pre").ok();
 
         for section in &doc.body {
             match &section.value {
@@ -400,23 +408,65 @@ impl MdnClient {
                     }
                 }
                 Some(super::types::MdnSectionValue::Prose { content }) => {
-                    content_parts.push(content.clone());
+                    if examples.len() < 5 {
+                        if let Some(selector) = &pre_selector {
+                            let fragment = Html::parse_fragment(content);
+                            for pre in fragment.select(selector) {
+                                let code = pre.text().collect::<String>().trim().to_string();
+                                if code.len() < 10 || !example_dedupe.insert(code.clone()) {
+                                    continue;
+                                }
 
-                    // Check if this is a syntax section
-                    if section
-                        .section_type
-                        .as_deref()
-                        .is_some_and(|t| t.contains("syntax"))
-                    {
-                        syntax = Some(content.clone());
+                                let class = pre.value().attr("class").unwrap_or_default();
+                                let language = guess_language_for_snippet(slug, class).to_string();
+                                let is_runnable = code.contains("function ")
+                                    || code.contains("const ")
+                                    || code.contains("let ")
+                                    || code.contains("=>");
+
+                                if syntax.is_none() && looks_like_syntax_snippet(&code) {
+                                    syntax = Some(code.clone());
+                                }
+
+                                examples.push(MdnExample {
+                                    code,
+                                    language,
+                                    description: None,
+                                    is_runnable,
+                                });
+
+                                if examples.len() >= 5 {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Add prose text (excluding preformatted code blocks)
+                    let cleaned = PRE_BLOCK_RE.replace_all(content, "");
+                    let fragment = Html::parse_fragment(cleaned.as_ref());
+                    let text = fragment
+                        .root_element()
+                        .text()
+                        .collect::<Vec<_>>()
+                        .join("")
+                        .trim()
+                        .to_string();
+                    if !text.is_empty() {
+                        content_parts.push(text);
                     }
                 }
                 Some(super::types::MdnSectionValue::Text(text)) => {
                     content_parts.push(text.clone());
                 }
-                None => {}
+                Some(super::types::MdnSectionValue::Other(_)) | None => {}
             }
         }
+
+        let parameters = syntax
+            .as_deref()
+            .map(extract_parameters_from_syntax)
+            .unwrap_or_default();
 
         MdnArticle {
             slug: slug.to_string(),
@@ -426,7 +476,7 @@ impl MdnClient {
             url: doc.url,
             examples,
             syntax,
-            parameters: Vec::new(), // Would need additional parsing
+            parameters,
             return_value: None,
             browser_compat: None,
             content: if content_parts.is_empty() {
@@ -442,12 +492,166 @@ impl MdnClient {
     }
 }
 
+fn guess_language_for_snippet(slug: &str, class: &str) -> &'static str {
+    let class_lower = class.to_lowercase();
+    if class_lower.contains("css") {
+        return "css";
+    }
+    if class_lower.contains("html") {
+        return "html";
+    }
+    if class_lower.contains("json") {
+        return "json";
+    }
+    if class_lower.contains("ts") || class_lower.contains("typescript") {
+        return "typescript";
+    }
+    if class_lower.contains("js") || class_lower.contains("javascript") {
+        return "javascript";
+    }
+
+    match MdnCategory::from_slug(slug) {
+        MdnCategory::JavaScript | MdnCategory::WebApi => "javascript",
+        MdnCategory::Css => "css",
+        MdnCategory::Html => "html",
+    }
+}
+
+fn looks_like_syntax_snippet(code: &str) -> bool {
+    let code = code.trim();
+    if code.len() > 160 {
+        return false;
+    }
+    if !code.contains('(') || !code.contains(')') {
+        return false;
+    }
+    if code.contains('{')
+        || code.contains(';')
+        || code.contains("=>")
+        || code.contains("const ")
+        || code.contains("let ")
+        || code.contains("var ")
+    {
+        return false;
+    }
+    true
+}
+
+fn extract_parameters_from_syntax(syntax: &str) -> Vec<MdnParameter> {
+    let mut params = Vec::new();
+    let mut seen = HashSet::<String>::new();
+
+    let mut remaining = syntax;
+    while let Some(open) = remaining.find('(') {
+        let Some(close) = remaining[open + 1..].find(')') else {
+            break;
+        };
+        let inside = &remaining[open + 1..open + 1 + close];
+        for raw in inside.split(',') {
+            let candidate = raw.trim();
+            if candidate.is_empty() {
+                continue;
+            }
+
+            let candidate = candidate
+                .trim_start_matches("...")
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
+                .to_string();
+
+            if candidate.is_empty() || !seen.insert(candidate.clone()) {
+                continue;
+            }
+
+            params.push(MdnParameter {
+                name: candidate,
+                description: String::new(),
+                param_type: None,
+                optional: false,
+            });
+        }
+        remaining = &remaining[open + 1 + close + 1..];
+    }
+
+    params
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mdn::types::{MdnSection, MdnSectionValue, MdnSource};
 
     #[test]
     fn test_client_creation() {
         let _client = MdnClient::new();
+    }
+
+    #[test]
+    fn test_document_to_article_extracts_syntax_parameters_examples_and_content() {
+        let client = MdnClient::new();
+        let slug = "Web/JavaScript/Reference/Global_Objects/Array/map";
+
+        let doc = MdnDocument {
+            url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map"
+                .to_string(),
+            title: "Array.prototype.map()".to_string(),
+            summary: "Returns a new array populated with the results of calling a provided function."
+                .to_string(),
+            body: vec![
+                MdnSection {
+                    section_type: Some("prose".to_string()),
+                    value: Some(MdnSectionValue::Prose {
+                        content: "<p>Overview</p><pre>map(callbackFn, thisArg)</pre><pre class=\"language-js\">const xs = [1, 2, 3];</pre>".to_string(),
+                    }),
+                },
+                MdnSection {
+                    section_type: Some("browser_compatibility".to_string()),
+                    value: Some(MdnSectionValue::Other(serde_json::json!({
+                        "browser_compatibility": {}
+                    }))),
+                },
+            ],
+            source: MdnSource::default(),
+        };
+
+        let article = client.document_to_article(doc, slug);
+
+        assert_eq!(article.syntax.as_deref(), Some("map(callbackFn, thisArg)"));
+        let names: Vec<&str> = article.parameters.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"callbackFn"));
+        assert!(names.contains(&"thisArg"));
+        assert!(article.examples.iter().any(|ex| ex.code.contains("const xs")));
+
+        let content = article.content.unwrap_or_default();
+        assert!(content.contains("Overview"));
+        assert!(!content.contains("callbackFn"));
+        assert!(!content.contains("const xs"));
+    }
+
+    #[test]
+    fn test_document_deserialization_tolerates_unknown_section_values() {
+        let payload = serde_json::json!({
+            "doc": {
+                "mdn_url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map",
+                "title": "Array.prototype.map()",
+                "summary": "",
+                "body": [
+                    {
+                        "type": "prose",
+                        "value": { "content": "<p>Hi</p>" }
+                    },
+                    {
+                        "type": "browser_compatibility",
+                        "value": { "specifications": [] }
+                    }
+                ],
+                "source": {}
+            }
+        });
+
+        let doc_response: MdnDocumentResponse = serde_json::from_value(payload).unwrap();
+        let client = MdnClient::new();
+        let article = client.document_to_article(doc_response.doc, "Web/JavaScript/Reference/Global_Objects/Array/map");
+
+        assert!(article.content.unwrap_or_default().contains("Hi"));
     }
 }
