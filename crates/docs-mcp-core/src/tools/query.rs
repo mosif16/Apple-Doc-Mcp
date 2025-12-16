@@ -142,6 +142,15 @@ static RUST_CRATES: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
+static RUST_DOCS_RS_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?:https?://)?docs\.rs/([a-zA-Z0-9_-]+)").unwrap());
+static RUST_CRATE_HINT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\bcrate\s+([a-zA-Z][a-zA-Z0-9_-]*)\b").unwrap());
+static RUST_PATH_CRATE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b([a-zA-Z][a-zA-Z0-9_-]*)::").unwrap());
+static RUST_TOKEN_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b[a-zA-Z][a-zA-Z0-9_-]*\b").unwrap());
+
 /// Telegram-related keywords
 static TELEGRAM_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     vec![
@@ -528,7 +537,7 @@ fn parse_query_intent(query: &str) -> QueryIntent {
     };
 
     // Detect provider and technology
-    let (provider, technology) = detect_provider_and_technology(&query_lower);
+    let (provider, technology) = detect_provider_and_technology(query_trimmed, &query_lower);
 
     // Extract keywords (remove common stop words and query prefixes)
     let keywords = extract_keywords(&query_lower);
@@ -545,14 +554,87 @@ fn parse_query_intent(query: &str) -> QueryIntent {
 /// Check if a word exists as a whole word in the query (not as a substring of another word)
 fn contains_word(query: &str, word: &str) -> bool {
     let query_words: Vec<&str> = query
-        .split(|c: char| c.is_whitespace() || c == '-' || c == '_' || c == '/' || c == '.')
+        .split(|c: char| {
+            c.is_whitespace()
+                || c == '-'
+                || c == '_'
+                || c == '/'
+                || c == '.'
+                || c == ':'
+                || c == '!'
+        })
         .filter(|s| !s.is_empty())
         .collect();
     query_words.contains(&word)
 }
 
+fn keyword_matches(query: &str, keyword: &str) -> bool {
+    if keyword.chars().any(char::is_whitespace) {
+        return query.contains(keyword);
+    }
+    if keyword.contains(['.', ':', '-', '_', '/']) {
+        return query.contains(keyword);
+    }
+    contains_word(query, keyword)
+}
+
+fn detect_rust_crate_hint(raw_query: &str, query: &str) -> Option<String> {
+    if let Some(caps) = RUST_DOCS_RS_RE.captures(query) {
+        return Some(caps[1].to_string());
+    }
+    if let Some(caps) = RUST_CRATE_HINT_RE.captures(query) {
+        return Some(caps[1].to_string());
+    }
+    if raw_query.contains("::") {
+        if let Some(caps) = RUST_PATH_CRATE_RE.captures(raw_query) {
+            let candidate = caps[1].to_string();
+            if candidate.chars().any(|c| c.is_ascii_uppercase()) {
+                return None;
+            }
+            let candidate = candidate.to_lowercase();
+            if !matches!(candidate.as_str(), "self" | "super" | "crate") {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn detect_rust_crate_token(query: &str) -> Option<String> {
+    if !(contains_word(query, "rust") || contains_word(query, "cargo") || contains_word(query, "crate")) {
+        return None;
+    }
+
+    for caps in RUST_TOKEN_RE.captures_iter(query) {
+        let token = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+        if token.is_empty() {
+            continue;
+        }
+        if matches!(token, "rust" | "cargo" | "crate" | "docs" | "rs") {
+            continue;
+        }
+        if token.contains(['_', '-']) {
+            return Some(token.to_string());
+        }
+    }
+
+    None
+}
+
+fn detect_claude_agent_sdk_signal(query: &str) -> bool {
+    keyword_matches(query, "@tool")
+        || keyword_matches(query, "cli_path")
+        || query.contains("claude agent sdk")
+        || query.contains("claude-agent-sdk")
+        || query.contains("agent sdk")
+        || contains_word(query, "claude")
+        || contains_word(query, "claudeagentsdk")
+        || contains_word(query, "claudesdkclient")
+        || contains_word(query, "claudeclient")
+}
+
 /// Detect the provider and technology from the query
-fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<String>) {
+fn detect_provider_and_technology(raw_query: &str, query: &str) -> (Option<ProviderType>, Option<String>) {
     // Check for Apple frameworks first (most common case)
     for (name, identifier) in APPLE_FRAMEWORKS.iter() {
         if contains_word(query, name) {
@@ -586,16 +668,37 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
         );
     }
 
+    // Check for Rust crate hints like `docs.rs/<crate>`, `crate <name>`, or `<crate>::...`
+    if let Some(crate_name) = detect_rust_crate_hint(raw_query, query) {
+        return (Some(ProviderType::Rust), Some(format!("rust:{crate_name}")));
+    }
+
     // Check for Rust crates
     for crate_name in RUST_CRATES.iter() {
         if contains_word(query, crate_name) {
+            // Avoid false positives for extremely common words unless the query is clearly Rust-related.
+            if matches!(*crate_name, "std" | "core" | "alloc")
+                && !(contains_word(query, "rust") || contains_word(query, "cargo") || query.contains("::"))
+            {
+                continue;
+            }
             return (Some(ProviderType::Rust), Some(format!("rust:{}", crate_name)));
         }
     }
 
+    // Infer Rust crate name from token patterns (e.g., `async_trait`, `serde_json`)
+    if let Some(crate_name) = detect_rust_crate_token(query) {
+        return (Some(ProviderType::Rust), Some(format!("rust:{crate_name}")));
+    }
+
+    // Check for general Rust queries (no specific crate detected)
+    if contains_word(query, "rust") || contains_word(query, "cargo") {
+        return (Some(ProviderType::Rust), Some("rust:std".to_string()));
+    }
+
     // Check for Vertcoin keywords (before TON/QuickNode since all are blockchain-related)
     for keyword in VERTCOIN_KEYWORDS.iter() {
-        if contains_word(query, keyword) || query.contains(keyword) {
+        if keyword_matches(query, keyword) {
             // Determine category based on query content
             let tech = if query.contains("mining") || query.contains("verthash") || query.contains("hashrate") || query.contains("getblocktemplate") {
                 "vertcoin:mining"
@@ -613,7 +716,7 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
 
     // Check for CUDA keywords (GPU programming)
     for keyword in CUDA_KEYWORDS.iter() {
-        if contains_word(query, keyword) || query.contains(keyword) {
+        if keyword_matches(query, keyword) {
             // Determine category based on query content
             let tech = if query.contains("kernel") || query.contains("__global__") || query.contains("__device__") || query.contains("__shared__") {
                 "cuda:kernels"
@@ -650,6 +753,29 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
         return (Some(ProviderType::Cocoon), Some("cocoon:architecture".to_string()));
     }
 
+    // Check for MLX keywords (Apple Silicon ML) before generic JS/Node matches like "module"
+    if contains_word(query, "mlx") || query.contains("mlx-swift") || query.contains("ml-explore") {
+        let tech = if query.contains("swift") || query.contains("ios") || query.contains("macos") {
+            "mlx:swift"
+        } else {
+            "mlx:python"
+        };
+        return (Some(ProviderType::Mlx), Some(tech.to_string()));
+    }
+
+    // Check for Claude Agent SDK signals before Node.js keywords like "path"
+    if detect_claude_agent_sdk_signal(query) {
+        let tech = if query.contains("python")
+            || keyword_matches(query, "@tool")
+            || keyword_matches(query, "cli_path")
+        {
+            "agent-sdk:python"
+        } else {
+            "agent-sdk:typescript"
+        };
+        return (Some(ProviderType::ClaudeAgentSdk), Some(tech.to_string()));
+    }
+
     // Check for React keywords (before general MDN keywords since React uses JS)
     for keyword in REACT_KEYWORDS.iter() {
         if contains_word(query, keyword) {
@@ -666,7 +792,7 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
 
     // Check for Bun keywords (before Node.js since Bun is more specific)
     for keyword in BUN_KEYWORDS.iter() {
-        if contains_word(query, keyword) || query.contains(keyword) {
+        if keyword_matches(query, keyword) {
             return (Some(ProviderType::WebFrameworks), Some("webfw:bun".to_string()));
         }
     }
@@ -680,7 +806,7 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
 
     // Check for MLX keywords (Apple Silicon ML)
     for keyword in MLX_KEYWORDS.iter() {
-        if contains_word(query, keyword) || query.contains(keyword) {
+        if keyword_matches(query, keyword) {
             // Determine if Swift or Python based on context
             let tech = if query.contains("swift") || query.contains("ios") || query.contains("macos") {
                 "mlx:swift"
@@ -693,7 +819,7 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
 
     // Check for Hugging Face keywords
     for keyword in HUGGINGFACE_KEYWORDS.iter() {
-        if contains_word(query, keyword) || query.contains(keyword) {
+        if keyword_matches(query, keyword) {
             // Determine if Swift Transformers or Python Transformers
             let tech = if query.contains("swift") {
                 "hf:swift-transformers"
@@ -706,7 +832,7 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
 
     // Check for QuickNode/Solana keywords
     for keyword in QUICKNODE_KEYWORDS.iter() {
-        if contains_word(query, keyword) || query.contains(keyword) {
+        if keyword_matches(query, keyword) {
             // Determine category based on query content
             let tech = if query.contains("websocket") || query.contains("subscribe") {
                 "quicknode:solana:websocket"
@@ -721,7 +847,10 @@ fn detect_provider_and_technology(query: &str) -> (Option<ProviderType>, Option<
 
     // Check for Claude Agent SDK keywords (before MDN since SDK uses JavaScript/TypeScript)
     for keyword in CLAUDE_AGENT_SDK_KEYWORDS.iter() {
-        if contains_word(query, keyword) || query.contains(keyword) {
+        if keyword_matches(query, keyword) {
+            if matches!(*keyword, "query" | "mcp" | "mcpservers") && !detect_claude_agent_sdk_signal(query) {
+                continue;
+            }
             // Determine language based on query content
             let tech = if query.contains("python") || query.contains("@tool") || query.contains("cli_path") {
                 "agent-sdk:python"
@@ -760,7 +889,15 @@ fn extract_keywords(query: &str) -> Vec<String> {
     });
 
     query
-        .split(|c: char| c.is_whitespace() || c == '-' || c == '_' || c == '/' || c == '.')
+        .split(|c: char| {
+            c.is_whitespace()
+                || c == '-'
+                || c == '_'
+                || c == '/'
+                || c == '.'
+                || c == ':'
+                || c == '!'
+        })
         .filter(|word| !word.is_empty() && word.len() > 1)
         .filter(|word| !STOP_WORDS.contains(word))
         .map(String::from)
@@ -881,6 +1018,7 @@ async fn resolve_technology(
                         "react" => "React",
                         "nextjs" => "Next.js",
                         "nodejs" => "Node.js",
+                        "bun" => "Bun",
                         _ => "React",
                     })
                     .unwrap_or("React");
@@ -893,6 +1031,7 @@ async fn resolve_technology(
                         "React" => "https://react.dev".to_string(),
                         "Next.js" => "https://nextjs.org/docs".to_string(),
                         "Node.js" => "https://nodejs.org/api".to_string(),
+                        "Bun" => "https://bun.sh/docs".to_string(),
                         _ => "https://react.dev".to_string(),
                     }),
                     kind: multi_provider_client::types::TechnologyKind::WebFramework,
@@ -1153,6 +1292,8 @@ async fn execute_search_query(
         "cocoon",
         // MLX but not ML concepts like "array", "neural"
         "mlx", "mlxswift",
+        // Bun runtime provider name
+        "bun", "bunjs",
         // Hugging Face but not model names that might be search terms
         "huggingface", "hf", "transformers",
         // Claude Agent SDK provider names only - keep class names like "claudesdkclient", "claudeclient"
@@ -2697,6 +2838,32 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_rust_crate_from_token() {
+        let intent = parse_query_intent("Rust async_trait");
+        assert_eq!(intent.provider, Some(ProviderType::Rust));
+        assert_eq!(intent.technology.as_deref(), Some("rust:async_trait"));
+    }
+
+    #[test]
+    fn test_detect_rust_docs_rs_crate() {
+        let intent = parse_query_intent("docs.rs/parking_lot Mutex");
+        assert_eq!(intent.provider, Some(ProviderType::Rust));
+        assert_eq!(intent.technology.as_deref(), Some("rust:parking_lot"));
+    }
+
+    #[test]
+    fn test_detect_mlx_before_node_module() {
+        let intent = parse_query_intent("MLX nn module");
+        assert_eq!(intent.provider, Some(ProviderType::Mlx));
+    }
+
+    #[test]
+    fn test_detect_claude_agent_sdk_before_node_path() {
+        let intent = parse_query_intent("Claude Agent SDK cli_path");
+        assert_eq!(intent.provider, Some(ProviderType::ClaudeAgentSdk));
+    }
+
+    #[test]
     fn test_detect_telegram_provider() {
         let intent = parse_query_intent("telegram bot sendMessage");
         assert_eq!(intent.provider, Some(ProviderType::Telegram));
@@ -2712,5 +2879,12 @@ mod tests {
         assert!(!keywords.contains(&"how".to_string()));
         assert!(!keywords.contains(&"to".to_string()));
         assert!(!keywords.contains(&"use".to_string()));
+    }
+
+    #[test]
+    fn test_extract_keywords_strips_macro_bang() {
+        let keywords = extract_keywords("how to use tokio::select!");
+        assert!(keywords.contains(&"tokio".to_string()));
+        assert!(keywords.contains(&"select".to_string()));
     }
 }

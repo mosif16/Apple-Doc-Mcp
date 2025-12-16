@@ -409,6 +409,7 @@ name = "docs-mcp"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "docs-mcp-client",
  "docs-mcp-core",
  "insta",
  "serde",
@@ -425,6 +426,7 @@ dependencies = [
  "anyhow",
  "config",
  "docs-mcp",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

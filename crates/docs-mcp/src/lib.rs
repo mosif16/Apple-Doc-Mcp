@@ -1,7 +1,10 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use anyhow::Result;
-use docs_mcp_core::{run, ServerConfig, ServerMode};
+use anyhow::{Context, Result};
+use docs_mcp_client::{AppleDocsClient, ClientConfig};
+use docs_mcp_core::{run, state::AppContext, ServerConfig, ServerMode};
+use serde_json::json;
 
 const CACHE_DIR_ENV: &str = "DOCSMCP_CACHE_DIR";
 const HEADLESS_ENV: &str = "DOCSMCP_HEADLESS";
@@ -23,6 +26,32 @@ pub async fn run_server() -> Result<()> {
         "Starting MCP server"
     );
     run(config).await
+}
+
+pub async fn oneshot_query(query: &str, max_results: Option<usize>) -> Result<docs_mcp_core::state::ToolResponse> {
+    let client = match resolve_cache_dir() {
+        Some(dir) => AppleDocsClient::with_config(ClientConfig {
+            cache_dir: dir,
+            ..ClientConfig::default()
+        }),
+        None => AppleDocsClient::new(),
+    };
+
+    let context = Arc::new(AppContext::new(client));
+    docs_mcp_core::tools::register_tools(context.clone()).await;
+
+    let tool = context
+        .tools
+        .get("query")
+        .await
+        .context("query tool not registered")?;
+
+    let mut args = json!({ "query": query });
+    if let Some(max) = max_results {
+        args["maxResults"] = json!(max);
+    }
+
+    (tool.handler)(context, args).await
 }
 
 fn resolve_cache_dir() -> Option<PathBuf> {

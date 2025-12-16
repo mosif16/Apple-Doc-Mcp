@@ -1,5 +1,19 @@
 ⚠️ MANDATORY: Every agent who touches this repository must review and update this document before finishing their session. Keeping it current is a strict requirement—do not skip this step.
 
+2025-12-16 (Codex agent):
+- Query tool: fixed provider detection for Rust paths like `tokio::spawn` by treating `:` as a token delimiter; added fallback detection for general `rust`/`cargo` queries.
+- Query tool: added dynamic Rust crate detection for `docs.rs/<crate>`, `crate <name>`, and `<crate>::...` queries; fixed regex escaping bug in that detection.
+- Query tool: prevented false-positive provider routing caused by substring matches (e.g., `prelude` matching MLX `relu`) by tightening keyword matching rules.
+- CLI: added one-shot shell mode `docs-mcp-cli query \"...\" [--max-results N]` that runs the `query` tool directly and prints plaintext output (no MCP handshake required).
+- MLX provider: fixed Python topic URLs to match the live Sphinx site structure and expanded the built-in topic index (adds core ops + activations like ReLU/Softmax/GELU so `MLX softmax` returns real docs).
+- Web Frameworks: fixed Bun technology naming/URL resolution (`webfw:bun` no longer shows as React) and filtered provider keywords so Bun searches focus on the actual API terms.
+- Query tool: avoided MLX queries like `MLX core ops` being misrouted to Rust `core` unless the query is clearly Rust-related.
+- CLI: improved one-shot UX with stdin query input and `--json` output (also supports `--maxResults` and `-n`).
+- Query tool: fixed `docs.rs/<crate>` detection (regex escape) and added token-based Rust crate inference for queries like `Rust async_trait`.
+- Query tool: prioritize explicit `MLX` and `Claude Agent SDK` signals ahead of generic Node.js keywords (e.g., `module`, `path`), and avoid routing generic `mcp`/`query` mentions to the SDK provider.
+- Query tool: improved Rust macro searches by splitting keywords on `!` so `tokio::select!` returns the `select` macro; avoided misdetecting `HashMap::...` as a crate by using the raw query’s casing.
+- Verified `cargo test --all` and `cargo clippy --all-targets -- -D warnings` pass.
+
 2025-12-14 (Codex agent):
 - Rust provider: fixed docs.rs indexing by scraping `{crate}/all.html`, inferring module paths from hrefs (incl re-exports), and bumping the on-disk index cache version.
 - Rust provider: corrected rustdoc URL generation (fn/struct/module/derive) and added macro fallback to `attr.*` pages so attribute macros like `tokio::main` fetch full docs.

@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 docs-mcp-core = {path = "../docs-mcp-core"}
+docs-mcp-client = {path = "../docs-mcp-client"}
 anyhow = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}
