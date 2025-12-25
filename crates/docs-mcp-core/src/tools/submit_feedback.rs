@@ -41,6 +41,8 @@ struct ClientInfo {
     #[serde(default)]
     model: Option<String>,
     #[serde(default)]
+    reasoning: Option<String>,
+    #[serde(default)]
     platform: Option<String>,
 }
 
@@ -105,6 +107,10 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                         "agentName": {"type": "string"},
                         "agentVersion": {"type": "string"},
                         "model": {"type": "string"},
+                        "reasoning": {
+                            "type": "string",
+                            "description": "Reasoning effort level (separate from model; e.g., low/medium/high/xhigh)."
+                        },
                         "platform": {"type": "string"}
                     },
                     "additionalProperties": true
@@ -120,7 +126,7 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 "improvements": ["Add fuzzy matching for typos", "Expose provider in output header"],
                 "missingDocs": ["UIKit UITableViewDiffableDataSource", "AppKit NSAttributedString paragraphStyle"],
                 "painPoints": ["Sometimes top docs are too long; would like a shorter 'key points' section first"],
-                "client": {"agentName": "Codex CLI", "model": "gpt-5.2"}
+                "client": {"agentName": "Codex CLI", "model": "gpt-5.2-codex", "reasoning": "xhigh"}
             })
         ]),
         allowed_callers: None,
@@ -267,6 +273,7 @@ mod tests {
                 agent_name: Some("test".to_string()),
                 agent_version: None,
                 model: None,
+                reasoning: None,
                 platform: None,
             }),
         };

@@ -1,5 +1,8 @@
 ⚠️ MANDATORY: Every agent who touches this repository must review and update this document before finishing their session. Keeping it current is a strict requirement—do not skip this step.
 
+2025-12-19 (Codex agent):
+- Feedback tooling: added `client.reasoning` to submit_feedback metadata, updated example to `gpt-5.2-codex` + `xhigh`, and clarified Codex `codex exec` guidance to keep model and reasoning separate.
+
 2025-12-16 (Codex agent):
 - Query tool: fixed provider detection for Rust paths like `tokio::spawn` by treating `:` as a token delimiter; added fallback detection for general `rust`/`cargo` queries.
 - Query tool: added dynamic Rust crate detection for `docs.rs/<crate>`, `crate <name>`, and `<crate>::...` queries; fixed regex escaping bug in that detection.
