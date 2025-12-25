@@ -387,6 +387,8 @@ async fn handle(context: Arc<AppContext>, args: Args) -> Result<ToolResponse> {
             TechnologyKind::AgentSdkLibrary => " [SDK]",
             TechnologyKind::VertcoinApi => " [VTC]",
             TechnologyKind::CudaApi => " [GPU]",
+            TechnologyKind::MetalApi => " [Metal]",
+            TechnologyKind::GameDevFramework => " [Game]",
         };
         title_line.push_str(kind_badge);
 
@@ -453,6 +455,8 @@ fn provider_display_name(provider: &ProviderType) -> &'static str {
         ProviderType::ClaudeAgentSdk => "🤖 Claude Agent SDK",
         ProviderType::Vertcoin => "💚 Vertcoin",
         ProviderType::Cuda => "🎮 CUDA",
+        ProviderType::Metal => "⚙️ Metal",
+        ProviderType::GameDev => "🎮 Game Development",
     }
 }
 
@@ -472,6 +476,8 @@ fn provider_sort_order(provider: &ProviderType) -> u8 {
         ProviderType::QuickNode => 10,
         ProviderType::ClaudeAgentSdk => 11,
         ProviderType::Vertcoin => 12,
+        ProviderType::Metal => 13,
+        ProviderType::GameDev => 14,
     }
 }
 
@@ -502,6 +508,8 @@ fn get_unified_relevance_score(tech: &UnifiedTechnology, query: &Option<String>)
             TechnologyKind::AgentSdkLibrary => 43,
             TechnologyKind::VertcoinApi => 41,
             TechnologyKind::CudaApi => 49, // High score for CUDA/GPU programming
+            TechnologyKind::MetalApi => 50, // High score for Metal GPU programming
+            TechnologyKind::GameDevFramework => 48, // High score for game development
         }
     };
 

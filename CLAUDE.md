@@ -25,6 +25,8 @@ Apple Doc MCP is a Model Context Protocol (MCP) server written in Rust that prov
 - **Claude Agent SDK**: TypeScript and Python SDKs for building AI agents with Claude Code capabilities
 - **Vertcoin**: GPU-mineable cryptocurrency with Verthash algorithm, JSON-RPC API documentation
 - **CUDA**: NVIDIA GPU programming (Runtime API, kernel development, cuBLAS, cuDNN) with RTX 3070/4090 specific documentation
+- **Metal**: Apple GPU programming API (MTLDevice, render/compute pipelines, MSL shaders, MPS, MetalFX)
+- **Game Development**: SpriteKit (2D), SceneKit (3D), RealityKit (AR/VR), GameKit (multiplayer), GameController, GameplayKit (AI)
 
 ## Build Commands
 
@@ -69,6 +71,8 @@ cargo clippy --all-targets
 │       │   ├── claude_agent_sdk/# Claude Agent SDK client (TypeScript + Python)
 │       │   ├── vertcoin/        # Vertcoin blockchain RPC documentation client
 │       │   ├── cuda/            # CUDA GPU programming documentation client
+│       │   ├── metal/           # Metal GPU programming documentation client
+│       │   ├── gamedev/         # Game development frameworks client (SpriteKit, SceneKit, etc.)
 │       │   ├── types.rs         # Unified types across all providers
 │       │   └── lib.rs           # ProviderClients aggregation
 ```
@@ -98,6 +102,8 @@ cargo clippy --all-targets
   - `ClaudeAgentSdkClient`: Claude Agent SDK documentation for TypeScript and Python from `docs.anthropic.com`
   - `VertcoinClient`: Vertcoin blockchain RPC documentation with Verthash mining support
   - `CudaClient`: CUDA GPU programming documentation (Runtime API, kernels, libraries) with RTX 3070/4090 specs
+  - `MetalClient`: Metal GPU programming documentation (MTLDevice, pipelines, MSL, MPS, MetalFX, ray tracing)
+  - `GameDevClient`: Game development frameworks (SpriteKit, SceneKit, RealityKit, GameKit, GameController, GameplayKit)
 
 ### Provider Architecture
 
@@ -118,6 +124,8 @@ pub enum ProviderType {
     QuickNode,
     ClaudeAgentSdk,
     Cuda,
+    Metal,
+    GameDev,
 }
 
 pub struct ProviderClients {
@@ -134,6 +142,8 @@ pub struct ProviderClients {
     pub claude_agent_sdk: ClaudeAgentSdkClient,
     pub vertcoin: VertcoinClient,
     pub cuda: CudaClient,
+    pub metal: MetalClient,
+    pub gamedev: GameDevClient,
 }
 ```
 
@@ -279,6 +289,53 @@ The `query` tool acts as an intelligent entry point that:
 - **Optimization**: Memory coalescing, occupancy, warp divergence, grid-stride loops, Tensor Cores
 - Comprehensive code examples for kernel development
 
+#### Metal (Apple GPU Programming)
+- **Core Types**: MTLDevice, MTLCommandQueue, MTLCommandBuffer, MTLCommandEncoder
+- **Resources**: MTLBuffer, MTLTexture, MTLSampler with shared/managed/private storage modes
+- **Render Pipeline**: MTLRenderPipelineState, MTLRenderPassDescriptor, vertex/fragment shaders
+- **Compute Pipeline**: MTLComputePipelineState, MTLComputeCommandEncoder, threadgroup memory
+- **MSL (Metal Shading Language)**: Vertex/fragment/kernel functions, data types, attributes
+- **MPS (Metal Performance Shaders)**: Neural networks, image processing, matrix operations
+- **MPSGraph**: Graph-based ML operations with automatic differentiation
+- **MetalFX**: Temporal and spatial upscaling for performance optimization
+- **Ray Tracing**: Acceleration structures, intersection functions, ray queries
+- **GPU Features**: Tile shaders, indirect command buffers, argument buffers
+- **Optimization**: Resource heaps, memory-less render targets, GPU profiling
+- Code examples for all major Metal operations
+
+#### Game Development Frameworks
+- **SpriteKit (2D Games)**:
+  - Core: SKScene, SKView, SKNode, SKSpriteNode, SKLabelNode
+  - Actions: SKAction sequences, groups, repeats, timing functions
+  - Physics: SKPhysicsBody, SKPhysicsWorld, collision detection, joints
+  - Effects: Particle emitters, shaders, blend modes, lighting
+- **SceneKit (3D Games)**:
+  - Core: SCNScene, SCNView, SCNNode, SCNCamera, SCNLight
+  - Materials: SCNMaterial, shaders, PBR rendering, environment maps
+  - Animation: SCNAnimation, physics, morph targets
+  - Physics: SCNPhysicsBody, SCNPhysicsWorld, vehicle physics
+- **RealityKit (AR/VR)**:
+  - Core: ARView, Entity, AnchorEntity, ModelEntity
+  - Components: Transform, ModelComponent, PhysicsBody, Collision
+  - AR Features: Scene understanding, occlusion, face tracking
+  - visionOS: Immersive spaces, hand tracking, eye tracking
+- **GameKit (Multiplayer)**:
+  - Core: GKLocalPlayer, GKPlayer, authentication
+  - Matchmaking: GKMatch, GKMatchRequest, real-time/turn-based
+  - Leaderboards: GKLeaderboard, score submission
+  - Achievements: GKAchievement, progress tracking
+- **GameController**:
+  - Controller types: GCController, GCExtendedGamepad, GCMicroGamepad
+  - Input handling: Button presses, thumbstick movement, triggers
+  - Haptics: GCDeviceHaptics for vibration feedback
+- **GameplayKit (AI & Logic)**:
+  - Entities: GKEntity, GKComponent, component system
+  - State machines: GKStateMachine, GKState transitions
+  - Agents: GKAgent, behaviors, goals, obstacles
+  - Pathfinding: GKGraph, GKGridGraph, navigation meshes
+  - Randomization: GKRandomSource, deterministic sequences
+- Platform availability and code examples for all frameworks
+
 ### Unified Query Tool Features
 
 The `query` tool implements advanced natural language processing:
@@ -313,6 +370,8 @@ Intelligently detects the target provider from query context:
 - **Claude Agent SDK**: claude, agent sdk, claudeagentsdk, claudesdkclient, query, mcp, hooks keywords
 - **Vertcoin**: vertcoin, vtc, verthash, vertcoin-cli, getblockchaininfo, getnewaddress, one click miner keywords
 - **CUDA**: cuda, nvcc, cudamalloc, cudamemcpy, __global__, __shared__, cublas, cudnn, rtx 3070, rtx 4090, tensor cores keywords
+- **Metal**: metal, mtldevice, mtlbuffer, mtlcommandqueue, msl, mps, mpsgraph, metalfx, render pipeline, compute kernel keywords
+- **GameDev**: spritekit, scenekit, realitykit, gamekit, gamecontroller, gameplaykit, skscene, sknode, scnmaterial, gkmatch, gccontroller, 2d game, 3d game, physics simulation keywords
 
 #### Query Type Classification
 Three query types with specialized handling:
@@ -348,6 +407,15 @@ input_examples: Some(vec![
     json!({"query": "CUDA __global__ kernel example"}),
     json!({"query": "RTX 4090 specs"}),
     json!({"query": "cuBLAS matrix multiplication"}),
+    json!({"query": "Metal MTLDevice creation"}),
+    json!({"query": "Metal render pipeline state"}),
+    json!({"query": "MSL shader function"}),
+    json!({"query": "MPS neural network"}),
+    json!({"query": "SpriteKit SKScene setup"}),
+    json!({"query": "SceneKit 3D materials"}),
+    json!({"query": "RealityKit AR anchor"}),
+    json!({"query": "GameKit multiplayer match"}),
+    json!({"query": "GameController button input"}),
 ])
 ```
 
@@ -496,6 +564,33 @@ printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024
 
 # Test query with CUDA (Libraries)
 printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"cuBLAS GEMM matrix multiplication"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Metal (Core)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Metal MTLDevice MTLCommandQueue"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Metal (Render Pipeline)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"Metal render pipeline state descriptor"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Metal (MSL Shader)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"MSL vertex fragment shader"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with Metal (MPS)
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"MPS neural network inference"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with SpriteKit
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"SpriteKit SKScene SKNode"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with SceneKit
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"SceneKit SCNMaterial PBR"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with RealityKit
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"RealityKit Entity AnchorEntity"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with GameKit
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"GameKit multiplayer matchmaking"}},"id":3}\n' | ./target/release/docs-mcp-cli
+
+# Test query with GameController
+printf '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}\n{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query","arguments":{"query":"GameController GCController input"}},"id":3}\n' | ./target/release/docs-mcp-cli
 ```
 
 ## Adding a New Provider

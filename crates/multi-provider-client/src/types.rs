@@ -7,8 +7,10 @@ use crate::claude_agent_sdk::types::{
 };
 use crate::cocoon::types::{CocoonDocument, CocoonSection, CocoonTechnology};
 use crate::cuda::types::{CudaCategory, CudaMethod, CudaTechnology};
+use crate::gamedev::types::{GameDevCategory, GameDevMethod, GameDevTechnology};
 use crate::huggingface::types::{HfArticle, HfCategory, HfTechnology};
 use crate::mdn::types::{MdnArticle, MdnTechnology};
+use crate::metal::types::{MetalCategory, MetalMethod, MetalTechnology};
 use crate::mlx::types::{MlxArticle, MlxCategory, MlxTechnology};
 use crate::quicknode::types::{QuickNodeCategory, QuickNodeMethod, QuickNodeTechnology};
 use crate::rust::types::{RustCategory, RustItem, RustTechnology};
@@ -42,6 +44,10 @@ pub enum ProviderType {
     Vertcoin,
     /// CUDA - NVIDIA GPU programming and kernel development
     Cuda,
+    /// Metal - Apple GPU programming API
+    Metal,
+    /// GameDev - Game development frameworks (SpriteKit, SceneKit, RealityKit, GameKit)
+    GameDev,
 }
 
 impl ProviderType {
@@ -61,6 +67,8 @@ impl ProviderType {
             Self::ClaudeAgentSdk => "Claude Agent SDK",
             Self::Vertcoin => "Vertcoin",
             Self::Cuda => "CUDA",
+            Self::Metal => "Metal",
+            Self::GameDev => "Game Development",
         }
     }
 
@@ -80,6 +88,8 @@ impl ProviderType {
             Self::ClaudeAgentSdk => "Claude Agent SDK for TypeScript and Python",
             Self::Vertcoin => "Vertcoin Blockchain and Verthash Mining Documentation",
             Self::Cuda => "CUDA GPU Programming and Kernel Development (RTX 3070/4090)",
+            Self::Metal => "Metal GPU Programming for Apple Platforms (iOS, macOS, visionOS)",
+            Self::GameDev => "Game Development (SpriteKit, SceneKit, RealityKit, GameKit)",
         }
     }
 }
@@ -129,6 +139,10 @@ pub enum TechnologyKind {
     VertcoinApi,
     /// CUDA GPU programming (Runtime API, Kernels, Libraries)
     CudaApi,
+    /// Metal GPU programming (Core API, Render, Compute, MPS)
+    MetalApi,
+    /// Game development framework (SpriteKit, SceneKit, RealityKit, GameKit)
+    GameDevFramework,
 }
 
 impl UnifiedTechnology {
@@ -279,6 +293,28 @@ impl UnifiedTechnology {
             description: tech.description,
             url: Some(tech.url),
             kind: TechnologyKind::CudaApi,
+        }
+    }
+
+    pub fn from_metal(tech: MetalTechnology) -> Self {
+        Self {
+            provider: ProviderType::Metal,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::MetalApi,
+        }
+    }
+
+    pub fn from_gamedev(tech: GameDevTechnology) -> Self {
+        Self {
+            provider: ProviderType::GameDev,
+            identifier: tech.identifier,
+            title: tech.title,
+            description: tech.description,
+            url: Some(tech.url),
+            kind: TechnologyKind::GameDevFramework,
         }
     }
 }
@@ -577,6 +613,50 @@ impl UnifiedFrameworkData {
             sections: vec![],
         }
     }
+
+    pub fn from_metal(data: MetalCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.name.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(item.kind.to_string()),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Metal,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
+
+    pub fn from_gamedev(data: GameDevCategory) -> Self {
+        let items = data
+            .items
+            .into_iter()
+            .map(|item| UnifiedReference {
+                identifier: item.name.clone(),
+                title: item.name,
+                description: Some(item.description),
+                kind: Some(format!("{} - {}", item.framework, item.kind)),
+                url: Some(item.url),
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::GameDev,
+            title: data.title,
+            description: data.description,
+            items,
+            sections: vec![],
+        }
+    }
 }
 
 /// Unified symbol/item data
@@ -681,6 +761,22 @@ pub enum SymbolContent {
         returns: Option<CudaReturnInfo>,
         examples: Vec<CudaExampleInfo>,
     },
+    /// Metal GPU programming documentation
+    Metal {
+        method_kind: String,
+        parameters: Vec<MetalParamInfo>,
+        returns: Option<MetalReturnInfo>,
+        examples: Vec<MetalExampleInfo>,
+        platforms: Vec<String>,
+    },
+    /// Game development documentation
+    GameDev {
+        framework: String,
+        method_kind: String,
+        parameters: Vec<GameDevParamInfo>,
+        examples: Vec<GameDevExampleInfo>,
+        platforms: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -738,6 +834,52 @@ pub struct CudaFieldInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CudaExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetalParamInfo {
+    pub name: String,
+    pub description: String,
+    pub param_type: String,
+    pub required: bool,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetalReturnInfo {
+    pub type_name: String,
+    pub description: String,
+    pub fields: Vec<MetalFieldInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetalFieldInfo {
+    pub name: String,
+    pub field_type: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetalExampleInfo {
+    pub code: String,
+    pub language: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameDevParamInfo {
+    pub name: String,
+    pub description: String,
+    pub param_type: String,
+    pub required: bool,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameDevExampleInfo {
     pub code: String,
     pub language: String,
     pub description: Option<String>,
@@ -1347,6 +1489,98 @@ impl UnifiedSymbolData {
                 parameters,
                 returns,
                 examples,
+            },
+            related: vec![],
+        }
+    }
+
+    pub fn from_metal(data: MetalMethod) -> Self {
+        let parameters = data
+            .parameters
+            .into_iter()
+            .map(|p| MetalParamInfo {
+                name: p.name,
+                description: p.description,
+                param_type: p.param_type,
+                required: p.required,
+                default_value: p.default_value,
+            })
+            .collect();
+
+        let returns = data.returns.map(|r| MetalReturnInfo {
+            type_name: r.type_name,
+            description: r.description,
+            fields: r
+                .fields
+                .into_iter()
+                .map(|f| MetalFieldInfo {
+                    name: f.name,
+                    field_type: f.field_type,
+                    description: f.description,
+                })
+                .collect(),
+        });
+
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| MetalExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::Metal,
+            title: data.name,
+            description: data.description,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::Metal {
+                method_kind: data.kind.to_string(),
+                parameters,
+                returns,
+                examples,
+                platforms: data.platforms,
+            },
+            related: vec![],
+        }
+    }
+
+    pub fn from_gamedev(data: GameDevMethod) -> Self {
+        let parameters = data
+            .parameters
+            .into_iter()
+            .map(|p| GameDevParamInfo {
+                name: p.name,
+                description: p.description,
+                param_type: p.param_type,
+                required: p.required,
+                default_value: p.default_value,
+            })
+            .collect();
+
+        let examples = data
+            .examples
+            .into_iter()
+            .map(|e| GameDevExampleInfo {
+                code: e.code,
+                language: e.language,
+                description: e.description,
+            })
+            .collect();
+
+        Self {
+            provider: ProviderType::GameDev,
+            title: data.name,
+            description: data.description,
+            kind: Some(data.kind.to_string()),
+            content: SymbolContent::GameDev {
+                framework: data.framework.to_string(),
+                method_kind: data.kind.to_string(),
+                parameters,
+                examples,
+                platforms: data.platforms,
             },
             related: vec![],
         }

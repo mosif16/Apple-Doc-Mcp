@@ -23,8 +23,10 @@
 pub mod claude_agent_sdk;
 pub mod cocoon;
 pub mod cuda;
+pub mod gamedev;
 pub mod huggingface;
 pub mod mdn;
+pub mod metal;
 pub mod mlx;
 pub mod quicknode;
 pub mod rust;
@@ -42,8 +44,10 @@ use docs_mcp_client::AppleDocsClient;
 use claude_agent_sdk::ClaudeAgentSdkClient;
 use cocoon::CocoonClient;
 use cuda::CudaClient;
+use gamedev::GameDevClient;
 use huggingface::HuggingFaceClient;
 use mdn::MdnClient;
+use metal::MetalClient;
 use mlx::MlxClient;
 use quicknode::QuickNodeClient;
 use rust::RustClient;
@@ -69,6 +73,8 @@ pub struct ProviderClients {
     pub claude_agent_sdk: ClaudeAgentSdkClient,
     pub vertcoin: VertcoinClient,
     pub cuda: CudaClient,
+    pub metal: MetalClient,
+    pub gamedev: GameDevClient,
 }
 
 impl Default for ProviderClients {
@@ -94,6 +100,8 @@ impl ProviderClients {
             claude_agent_sdk: ClaudeAgentSdkClient::new(),
             vertcoin: VertcoinClient::new(),
             cuda: CudaClient::new(),
+            metal: MetalClient::new(),
+            gamedev: GameDevClient::new(),
         }
     }
 
@@ -107,7 +115,7 @@ impl ProviderClients {
     pub async fn get_all_technologies(
         &self,
     ) -> Result<HashMap<ProviderType, Vec<UnifiedTechnology>>> {
-        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf, qn, agent_sdk, vtc, cuda) = tokio::join!(
+        let (apple, telegram, ton, cocoon, rust, mdn, webfw, mlx, hf, qn, agent_sdk, vtc, cuda, metal, gamedev) = tokio::join!(
             self.apple.get_technologies(),
             self.telegram.get_technologies(),
             self.ton.get_technologies(),
@@ -120,7 +128,9 @@ impl ProviderClients {
             self.quicknode.get_technologies(),
             self.claude_agent_sdk.get_technologies(),
             self.vertcoin.get_technologies(),
-            self.cuda.get_technologies()
+            self.cuda.get_technologies(),
+            self.metal.get_technologies(),
+            self.gamedev.get_technologies()
         );
 
         let mut result = HashMap::new();
@@ -228,6 +238,26 @@ impl ProviderClients {
             );
         }
 
+        if let Ok(techs) = metal {
+            result.insert(
+                ProviderType::Metal,
+                techs
+                    .into_iter()
+                    .map(UnifiedTechnology::from_metal)
+                    .collect(),
+            );
+        }
+
+        if let Ok(techs) = gamedev {
+            result.insert(
+                ProviderType::GameDev,
+                techs
+                    .into_iter()
+                    .map(UnifiedTechnology::from_gamedev)
+                    .collect(),
+            );
+        }
+
         Ok(result)
     }
 
@@ -305,6 +335,20 @@ impl ProviderClients {
                     .map(UnifiedTechnology::from_cuda)
                     .collect())
             }
+            ProviderType::Metal => {
+                let techs = self.metal.get_technologies().await?;
+                Ok(techs
+                    .into_iter()
+                    .map(UnifiedTechnology::from_metal)
+                    .collect())
+            }
+            ProviderType::GameDev => {
+                let techs = self.gamedev.get_technologies().await?;
+                Ok(techs
+                    .into_iter()
+                    .map(UnifiedTechnology::from_gamedev)
+                    .collect())
+            }
         }
     }
 
@@ -371,6 +415,14 @@ impl ProviderClients {
             ProviderType::Cuda => {
                 let data = self.cuda.get_category(identifier).await?;
                 Ok(UnifiedFrameworkData::from_cuda(data))
+            }
+            ProviderType::Metal => {
+                let data = self.metal.get_category(identifier).await?;
+                Ok(UnifiedFrameworkData::from_metal(data))
+            }
+            ProviderType::GameDev => {
+                let data = self.gamedev.get_category(identifier).await?;
+                Ok(UnifiedFrameworkData::from_gamedev(data))
             }
         }
     }
@@ -466,6 +518,14 @@ impl ProviderClients {
             ProviderType::Cuda => {
                 let data = self.cuda.get_method(path).await?;
                 Ok(UnifiedSymbolData::from_cuda(data))
+            }
+            ProviderType::Metal => {
+                let data = self.metal.get_method(path).await?;
+                Ok(UnifiedSymbolData::from_metal(data))
+            }
+            ProviderType::GameDev => {
+                let data = self.gamedev.get_method(path).await?;
+                Ok(UnifiedSymbolData::from_gamedev(data))
             }
         }
     }

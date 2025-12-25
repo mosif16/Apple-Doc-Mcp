@@ -421,6 +421,64 @@ static CUDA_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
+/// Metal (Apple GPU) keywords
+static METAL_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        // Core Metal API (avoiding generic "metal" which could be music/material)
+        "metal api", "metalapi", "mtldevice", "mtlcommandqueue", "mtlcommandencoder",
+        "mtlbuffer", "mtltexture", "mtlrenderpipeline", "mtlcomputepipeline",
+        "mtlrendercommandencoder", "mtlcomputecommandencoder", "mtlblitcommandencoder",
+        "mtllibrary", "mtlfunction", "mtlheap", "mtlfence", "mtlevent",
+        // Metal Shading Language
+        "msl", "metal shading language", "kernel void", "vertex shader metal",
+        "fragment shader metal", "threadgroup", "simd_shuffle",
+        "thread_position_in_grid", "threadgroup_barrier",
+        // Metal Performance Shaders
+        "mps", "metalperformanceshaders", "mpsgraph", "mpsimage", "mpsmatrix",
+        "mpscnn", "mpsnngraph", "mpsrayintersector",
+        // MetalFX
+        "metalfx", "mtlfxspatialscaler", "mtlfxtemporalscaler",
+        // Metal-specific concepts
+        "metal render", "metal compute", "argument buffer", "indirect command buffer",
+        "tile shading", "raster order groups", "memoryless",
+        // Apple Silicon GPU
+        "apple gpu", "apple silicon gpu", "unified memory gpu",
+    ]
+});
+
+/// Game Development keywords
+static GAMEDEV_KEYWORDS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    vec![
+        // SpriteKit
+        "spritekit", "skview", "skscene", "sknode", "skspritenode", "sklabelnode",
+        "skshapenode", "skcameranode", "sklightnode", "skeffectnode", "skcropnode",
+        "skaction", "skphysicsbody", "skphysicsworld", "sktilemap", "skreferencenode",
+        // SceneKit
+        "scenekit", "scnview", "scnscene", "scnnode", "scngeometry", "scnbox",
+        "scnsphere", "scncapsule", "scncamera", "scnlight", "scnmaterial",
+        "scnaction", "scntransaction", "scnanimation", "scnphysicsbody", "scnphysicsworld",
+        "scnmorpher", "scnskinner", "scnconstraint", "scnlookatconstraint",
+        // RealityKit
+        "realitykit", "arview", "realityview", "entity", "modelentity", "anchorentity",
+        "component", "arkit", "arsession", "sceneunderstanding", "handtracking",
+        "objectcapture", "charactercontroller",
+        // GameKit
+        "gamekit", "gklocalplayer", "gkachievement", "gkleaderboard", "gkaccesspoint",
+        "gkmatch", "gkmatchmaker", "gkturnbasedmatch", "gkvoicechat",
+        "game center", "gamecenter", "multiplayer game", "turn based game",
+        // GameController
+        "gamecontroller", "gccontroller", "gcextendedgamepad", "gcmicrogamepad",
+        "gckeyboard", "gcmouse", "gcvirtualcontroller", "mfi controller",
+        // GameplayKit
+        "gameplaykit", "gkentity", "gkcomponent", "gkstatemachine", "gkstate",
+        "gkagent", "gkgoal", "gkpath", "gkobstacle", "gkgraph", "gkrandom",
+        "gknoise", "gkminmaxstrategist",
+        // General game dev
+        "2d game", "3d game", "game physics", "game ai", "pathfinding",
+        "sprite animation", "tile map", "physics body", "collision detection",
+    ]
+});
+
 /// How-to query patterns
 static HOWTO_PATTERNS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(how\s+(do\s+i|to|can\s+i)|what'?s?\s+the\s+(best\s+)?way\s+to|implement|create|make|build|add|show\s+me\s+how)").unwrap()
@@ -439,9 +497,10 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 "Complete documentation retrieval in a single call. Returns full documentation \
                  content, code examples, declarations, and parameters—no follow-up calls needed. \
                  Auto-detects provider (Apple, Rust, Telegram, TON, Cocoon, MDN, React, Next.js, \
-                 Node.js, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin, CUDA) from your query. \
-                 Top 5 results include complete documentation; remaining results include summaries. \
-                 Use natural language: 'SwiftUI NavigationStack', 'Rust tokio spawn', 'CUDA cudaMalloc', 'RTX 4090 specs'."
+                 Node.js, MLX, Hugging Face, QuickNode, Claude Agent SDK, Vertcoin, CUDA, Metal, \
+                 GameDev) from your query. Top 5 results include complete documentation; remaining \
+                 results include summaries. Use natural language: 'SwiftUI NavigationStack', \
+                 'Metal MTLDevice', 'SpriteKit SKAction', 'SceneKit physics', 'GameKit multiplayer'."
                     .to_string(),
             input_schema: json!({
                 "type": "object",
@@ -492,6 +551,26 @@ pub fn definition() -> (ToolDefinition, ToolHandler) {
                 json!({"query": "RTX 4090 specifications CUDA"}),
                 json!({"query": "cuBLAS matrix multiplication"}),
                 json!({"query": "CUDA memory coalescing optimization"}),
+                // Metal examples
+                json!({"query": "Metal MTLDevice makeBuffer"}),
+                json!({"query": "Metal render pipeline descriptor"}),
+                json!({"query": "MTLComputeCommandEncoder dispatchThreadgroups"}),
+                json!({"query": "Metal Shading Language kernel"}),
+                json!({"query": "MPS matrix multiplication"}),
+                json!({"query": "MPSGraph neural network"}),
+                json!({"query": "MetalFX temporal upscaling"}),
+                // Game development examples
+                json!({"query": "SpriteKit SKAction sequence"}),
+                json!({"query": "SpriteKit physics collision detection"}),
+                json!({"query": "SceneKit SCNNode animation"}),
+                json!({"query": "SceneKit PBR material"}),
+                json!({"query": "RealityKit entity component"}),
+                json!({"query": "RealityKit AR anchor"}),
+                json!({"query": "GameKit multiplayer matchmaking"}),
+                json!({"query": "GameKit achievements leaderboard"}),
+                json!({"query": "GameController GCExtendedGamepad"}),
+                json!({"query": "GameplayKit state machine"}),
+                json!({"query": "GKEntity component system"}),
             ]),
             allowed_callers: None,
         },
@@ -731,6 +810,54 @@ fn detect_provider_and_technology(raw_query: &str, query: &str) -> (Option<Provi
                 "cuda:runtime"
             };
             return (Some(ProviderType::Cuda), Some(tech.to_string()));
+        }
+    }
+
+    // Check for Metal keywords (Apple GPU programming)
+    for keyword in METAL_KEYWORDS.iter() {
+        if keyword_matches(query, keyword) {
+            // Determine category based on query content
+            let tech = if query.contains("msl") || query.contains("shader") || query.contains("shading") || query.contains("vertex") || query.contains("fragment") {
+                "metal:msl"
+            } else if query.contains("mps") || query.contains("performance shader") || query.contains("neural network") || query.contains("mpsgraph") {
+                "metal:mps"
+            } else if query.contains("compute") || query.contains("kernel") || query.contains("dispatch") || query.contains("threadgroup") {
+                "metal:compute"
+            } else if query.contains("render") || query.contains("draw") || query.contains("pipeline state") || query.contains("encoder") {
+                "metal:render"
+            } else if query.contains("metalfx") || query.contains("upscale") || query.contains("temporal") {
+                "metal:metalfx"
+            } else if query.contains("ray") || query.contains("acceleration structure") || query.contains("intersection") {
+                "metal:raytracing"
+            } else {
+                // Default to core API
+                "metal:core"
+            };
+            return (Some(ProviderType::Metal), Some(tech.to_string()));
+        }
+    }
+
+    // Check for Game Development keywords (SpriteKit, SceneKit, RealityKit, GameKit)
+    for keyword in GAMEDEV_KEYWORDS.iter() {
+        if keyword_matches(query, keyword) {
+            // Determine framework based on query content
+            let tech = if query.contains("spritekit") || query.contains("skscene") || query.contains("sknode") || query.contains("skaction") || query.contains("2d game") {
+                "gamedev:spritekit"
+            } else if query.contains("scenekit") || query.contains("scnscene") || query.contains("scnnode") || query.contains("scnmaterial") || query.contains("3d game") {
+                "gamedev:scenekit"
+            } else if query.contains("realitykit") || query.contains("arview") || query.contains("entity") || query.contains("anchor") || query.contains("ar ") || query.contains("vr ") || query.contains("visionos") {
+                "gamedev:realitykit"
+            } else if query.contains("gamekit") || query.contains("gkmatch") || query.contains("multiplayer") || query.contains("leaderboard") || query.contains("achievement") || query.contains("game center") {
+                "gamedev:gamekit"
+            } else if query.contains("gamecontroller") || query.contains("gccontroller") || query.contains("joystick") || query.contains("dpad") || query.contains("gamepad") {
+                "gamedev:gamecontroller"
+            } else if query.contains("gameplaykit") || query.contains("gkentity") || query.contains("state machine") || query.contains("gkagent") || query.contains("pathfinding") {
+                "gamedev:gameplaykit"
+            } else {
+                // Default to SpriteKit for generic game queries
+                "gamedev:spritekit"
+            };
+            return (Some(ProviderType::GameDev), Some(tech.to_string()));
         }
     }
 
@@ -1176,6 +1303,67 @@ async fn resolve_technology(
                 *context.state.active_unified_technology.write().await = Some(unified);
                 Ok((*provider, category_name.to_string()))
             }
+            ProviderType::Metal => {
+                // Parse category from tech_id (e.g., "metal:core" -> "Metal Core API")
+                let category_name = tech_id
+                    .strip_prefix("metal:")
+                    .map(|c| match c {
+                        "core" => "Metal Core API",
+                        "render" => "Metal Render Pipeline",
+                        "compute" => "Metal Compute Pipeline",
+                        "msl" => "Metal Shading Language",
+                        "mps" => "Metal Performance Shaders",
+                        "mpsgraph" => "MPSGraph",
+                        "metalfx" => "MetalFX",
+                        "raytracing" => "Metal Ray Tracing",
+                        "optimization" => "Metal Optimization",
+                        _ => "Metal Core API",
+                    })
+                    .unwrap_or("Metal Core API");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: category_name.to_string(),
+                    description: "Metal GPU programming for iOS, macOS, and visionOS".to_string(),
+                    provider: ProviderType::Metal,
+                    url: Some("https://developer.apple.com/documentation/metal".to_string()),
+                    kind: multi_provider_client::types::TechnologyKind::MetalApi,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, category_name.to_string()))
+            }
+            ProviderType::GameDev => {
+                // Parse framework from tech_id (e.g., "gamedev:spritekit" -> "SpriteKit")
+                let framework_name = tech_id
+                    .strip_prefix("gamedev:")
+                    .map(|f| match f {
+                        "spritekit" => "SpriteKit",
+                        "scenekit" => "SceneKit",
+                        "realitykit" => "RealityKit",
+                        "gamekit" => "GameKit",
+                        "gamecontroller" => "GameController",
+                        "gameplaykit" => "GameplayKit",
+                        _ => "SpriteKit",
+                    })
+                    .unwrap_or("SpriteKit");
+                let unified = UnifiedTechnology {
+                    identifier: tech_id.clone(),
+                    title: framework_name.to_string(),
+                    description: format!("{} game development framework", framework_name),
+                    provider: ProviderType::GameDev,
+                    url: Some(match framework_name {
+                        "SpriteKit" => "https://developer.apple.com/documentation/spritekit".to_string(),
+                        "SceneKit" => "https://developer.apple.com/documentation/scenekit".to_string(),
+                        "RealityKit" => "https://developer.apple.com/documentation/realitykit".to_string(),
+                        "GameKit" => "https://developer.apple.com/documentation/gamekit".to_string(),
+                        "GameController" => "https://developer.apple.com/documentation/gamecontroller".to_string(),
+                        "GameplayKit" => "https://developer.apple.com/documentation/gameplaykit".to_string(),
+                        _ => "https://developer.apple.com/documentation/spritekit".to_string(),
+                    }),
+                    kind: multi_provider_client::types::TechnologyKind::GameDevFramework,
+                };
+                *context.state.active_unified_technology.write().await = Some(unified);
+                Ok((*provider, framework_name.to_string()))
+            }
         }
     } else {
         // No provider detected - check if there's an active technology, otherwise default to Apple/SwiftUI
@@ -1300,6 +1488,11 @@ async fn execute_search_query(
         "claude", "agent", "sdk", "claudeagentsdk",
         // Vertcoin provider names
         "vertcoin", "vtc", "verthash",
+        // Metal provider names
+        "metal", "mtl", "msl", "mps", "mpsgraph", "metalfx",
+        // GameDev provider names
+        "spritekit", "scenekit", "realitykit", "gamekit", "gamecontroller", "gameplaykit",
+        "skscene", "sknode", "scnscene", "scnnode", "gkmatch", "gccontroller",
     ];
 
     let search_keywords: Vec<&str> = intent
@@ -1330,6 +1523,8 @@ async fn execute_search_query(
         ProviderType::ClaudeAgentSdk => search_claude_agent_sdk(context, intent, &search_query, max_results).await,
         ProviderType::Vertcoin => search_vertcoin(context, &search_query, max_results).await,
         ProviderType::Cuda => search_cuda(context, &search_query, max_results).await,
+        ProviderType::Metal => search_metal(context, &search_query, max_results).await,
+        ProviderType::GameDev => search_gamedev(context, &search_query, max_results).await,
     }
 }
 
@@ -2354,6 +2549,127 @@ async fn search_cuda(
     Ok(results)
 }
 
+/// Search Metal documentation
+async fn search_metal(
+    context: &Arc<AppContext>,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    let items = match context.providers.metal.search(query).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "Metal search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full method documentation for top results
+        let (full_content, code_sample, parameters) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.metal.get_method(&item.name).await {
+                Ok(method) => {
+                    let code = method.examples.first().map(|e| e.code.clone());
+                    let params: Vec<(String, String)> = method
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.description.clone()))
+                        .collect();
+                    let content = if !method.description.is_empty() {
+                        Some(method.description.clone())
+                    } else {
+                        None
+                    };
+                    (content, code, params)
+                }
+                Err(_) => (Some(item.description.clone()), None, Vec::new()),
+            }
+        } else {
+            (None, None, Vec::new())
+        };
+
+        results.push(DocResult {
+            title: item.name.clone(),
+            kind: item.kind.to_string(),
+            path: item.name,
+            summary: item.description.clone(),
+            platforms: Some("Metal / Apple GPU".to_string()),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration: None,
+            parameters,
+        });
+    }
+
+    Ok(results)
+}
+
+/// Search Game Development documentation
+async fn search_gamedev(
+    context: &Arc<AppContext>,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<DocResult>> {
+    let items = match context.providers.gamedev.search(query).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "GameDev search failed, returning empty results");
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        // Fetch full method documentation for top results
+        let (full_content, code_sample, parameters) = if results.len() < MAX_DETAILED_DOCS {
+            match context.providers.gamedev.get_method(&item.name).await {
+                Ok(method) => {
+                    let code = method.examples.first().map(|e| e.code.clone());
+                    let params: Vec<(String, String)> = method
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.description.clone()))
+                        .collect();
+                    let content = if !method.description.is_empty() {
+                        Some(method.description.clone())
+                    } else {
+                        None
+                    };
+                    (content, code, params)
+                }
+                Err(_) => (Some(item.description.clone()), None, Vec::new()),
+            }
+        } else {
+            (None, None, Vec::new())
+        };
+
+        // Determine platform string based on framework
+        let platform = match item.framework.as_str() {
+            "SpriteKit" | "SceneKit" | "GameplayKit" => "iOS, macOS, tvOS, watchOS",
+            "RealityKit" => "iOS, macOS, visionOS",
+            "GameKit" => "iOS, macOS, tvOS, watchOS, visionOS",
+            "GameController" => "iOS, macOS, tvOS",
+            _ => "Apple Platforms",
+        };
+
+        results.push(DocResult {
+            title: item.name.clone(),
+            kind: format!("{} ({})", item.kind, item.framework),
+            path: item.name,
+            summary: item.description.clone(),
+            platforms: Some(platform.to_string()),
+            code_sample,
+            related_apis: Vec::new(),
+            full_content,
+            declaration: None,
+            parameters,
+        });
+    }
+
+    Ok(results)
+}
+
 /// Extract code sample from Apple symbol data
 fn extract_code_sample(symbol: &docs_mcp_client::types::SymbolData) -> Option<String> {
     // Look for code listings in primary content sections
@@ -2801,6 +3117,8 @@ fn detect_code_language(provider: &ProviderType, platforms: Option<&str>) -> &'s
         ProviderType::Cocoon => "text",
         ProviderType::Vertcoin => "bash",
         ProviderType::Cuda => "cuda",
+        ProviderType::Metal => "swift", // Metal uses Swift with MSL for shaders
+        ProviderType::GameDev => "swift", // Game development frameworks use Swift
     }
 }
 
